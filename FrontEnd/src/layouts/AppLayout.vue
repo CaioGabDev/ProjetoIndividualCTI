@@ -1,19 +1,31 @@
 <script setup>
-// Importação do componente Header e Sidebar
-import Header from '../components/Header.vue'
 import Sidebar from '../components/Sidebar.vue'
+import Topbar from '../components/Topbar.vue'
 </script>
+
 <template>
- <div class="min-h-screen bg-slate-50 text-slate-900 flex flex-col">
- <!-- 1. O HEADER FICA AQUI (FIXO NO TOPO) -->
- <Header />
- <div class="flex flex-1 pt-14">
- <!-- 2. A SIDEBAR FICA NA LATERAL -->
- <Sidebar />
- <!-- 3. AQUI ABREM AS PÁGINAS (Upload, Relatórios, Gráficos) -->
- <main class="flex-1 p-6 overflow-y-auto">
- <router-view />
- </main>
- </div>
- </div>
+  <!-- Casca do painel interno: sidebar fixa à esquerda, topbar e conteúdo à direita -->
+  <div class="min-h-screen bg-zinc-950 text-zinc-100 flex">
+    <Sidebar />
+
+    <div class="flex-1 flex flex-col min-w-0">
+      <Topbar />
+
+      <main class="flex-1 overflow-y-auto px-6 py-6">
+        <!-- Aqui entram Dashboard, Clientes e Enviar planilha -->
+        <router-view v-slot="{ Component }">
+          <transition name="fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
+      </main>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active { transition: opacity .15s ease; }
+.fade-enter-from,
+.fade-leave-to { opacity: 0; }
+</style>
