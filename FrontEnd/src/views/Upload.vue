@@ -1,17 +1,20 @@
 <script setup>
 import { ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
-import { envios, estiloStatus } from '../data/mock.js'
+import { envios, estiloStatus, estiloNivel, formatarReal } from '../data/mock.js'
+import { useUploadStore } from '../stores/uploadStore.js'
+
+/*
+  A tela cuida só da interface: quem valida, lê e padroniza a planilha
+  é o store do Pinia (src/stores/uploadStore.js).
+*/
+const upload = useUploadStore()
 
 const historico = ref([...envios])
 const arrastando = ref(false)
-const arquivo = ref(null)
-const erro = ref('')
-const enviando = ref(false)
 const inputArquivo = ref(null)
 
-const EXTENSOES = ['.xlsx', '.xls', '.csv']
-const TAMANHO_MAXIMO = 10 * 1024 * 1024 // 10MB
+const LIMITE_PREVIA = 50 // a tabela mostra só o começo; o total vem dos getters
 
 const checklist = [
   { icone: 'check',  cor: 'text-emerald-400', titulo: 'Cabeçalho na primeira linha', texto: 'Nome do cliente, segmento, serviço e valor de faturamento identificados.' },
@@ -20,25 +23,12 @@ const checklist = [
   { icone: 'shield', cor: 'text-orange-400',  titulo: 'Armazenamento seguro',        texto: 'Os dados enviados ficam armazenados com acesso restrito (LGPD).' },
 ]
 
-function extensaoValida(nome) {
-  return EXTENSOES.some(ext => nome.toLowerCase().endsWith(ext))
-}
-
 function selecionar(arquivos) {
-  erro.value = ''
   const escolhido = arquivos?.[0]
   if (!escolhido) return
 
-  if (!extensaoValida(escolhido.name)) {
-    erro.value = 'Formato não suportado. Envie um arquivo .xlsx, .xls ou .csv.'
-    return
-  }
-  if (escolhido.size > TAMANHO_MAXIMO) {
-    erro.value = 'Arquivo acima de 10MB. Divida a planilha e envie em partes.'
-    return
-  }
-
-  arquivo.value = escolhido
+  upload.selecionarArquivo(escolhido)
+  upload.validarArquivo() // mostra formato/tamanho inválido na hora
 }
 
 function aoSoltar(evento) {
@@ -51,27 +41,29 @@ function formatarTamanho(bytes) {
   return `${(bytes / 1024 / 1024).toFixed(1)}MB`
 }
 
-/*
-  Envio de verdade acontece em api.enviarPlanilha(arquivo) quando o
-  endpoint POST /api/planilhas existir. Por enquanto só registra no histórico.
-*/
-async function enviar() {
-  if (!arquivo.value) return
-  enviando.value = true
+function remover() {
+  upload.limpar()
+  if (inputArquivo.value) inputArquivo.value.value = ''
+}
 
-  await new Promise(resolve => setTimeout(resolve, 900))
+/*
+  Lê a planilha no navegador e registra o resultado no histórico.
+  O envio ao Spring Boot entra depois, em upload.enviarParaBackend().
+*/
+async function processar() {
+  const nomeArquivo = upload.arquivo?.name
+  const tamanho = upload.arquivo?.size
+
+  const deuCerto = await upload.processarPlanilha()
+  if (!deuCerto) return
 
   historico.value.unshift({
     id: Date.now(),
-    arquivo: arquivo.value.name,
-    detalhe: `${formatarTamanho(arquivo.value.size)} · enviado agora`,
+    arquivo: nomeArquivo,
+    detalhe: `${upload.totalClientes} linhas · ${formatarTamanho(tamanho)}`,
     quando: 'agora',
-    status: 'Processando',
+    status: upload.totalErros > 0 ? 'Erro de formato' : 'Processado',
   })
-
-  arquivo.value = null
-  if (inputArquivo.value) inputArquivo.value.value = ''
-  enviando.value = false
 }
 </script>
 
@@ -123,30 +115,112 @@ async function enviar() {
           <p class="mt-5 text-[10px] font-mono text-zinc-600">.XLSX · .XLS · .CSV · ATÉ 10MB</p>
         </div>
 
-        <!-- Erro de validação -->
-        <p v-if="erro" class="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/30 px-3.5 py-2.5 text-[11px] text-red-400">
-          <AppIcon name="alert" class="w-3.5 h-3.5 shrink-0" />
-          {{ erro }}
-        </p>
-
-        <!-- Arquivo escolhido, pronto pra enviar -->
-        <div v-if="arquivo" class="flex items-center gap-3 rounded-xl border border-zinc-800/60 bg-zinc-900/40 px-4 py-3.5">
+        <!-- Arquivo escolhido, pronto pra processar -->
+        <div v-if="upload.arquivo" class="flex items-center gap-3 rounded-xl border border-zinc-800/60 bg-zinc-900/40 px-4 py-3.5">
           <div class="w-8 h-8 shrink-0 rounded-lg bg-emerald-500/15 flex items-center justify-center">
             <AppIcon name="file" class="w-4 h-4 text-emerald-400" />
           </div>
           <div class="min-w-0 flex-1 leading-tight">
-            <p class="text-xs text-zinc-200 truncate">{{ arquivo.name }}</p>
-            <p class="text-[10px] font-mono text-zinc-600">{{ formatarTamanho(arquivo.size) }}</p>
+            <p class="text-xs text-zinc-200 truncate">{{ upload.arquivo.name }}</p>
+            <p class="text-[10px] font-mono text-zinc-600">{{ formatarTamanho(upload.arquivo.size) }}</p>
           </div>
-          <button class="text-[11px] text-zinc-500 hover:text-zinc-300 transition" @click="arquivo = null">
+          <button class="text-[11px] text-zinc-500 hover:text-zinc-300 transition" @click="remover">
             Remover
           </button>
           <button
-            :disabled="enviando"
+            :disabled="upload.carregando"
             class="rounded-lg bg-emerald-500 px-4 py-2 text-[11px] font-medium text-emerald-950 hover:bg-emerald-400 disabled:opacity-60 transition"
-            @click="enviar">
-            {{ enviando ? 'Enviando...' : 'Enviar' }}
+            @click="processar">
+            {{ upload.carregando ? 'Lendo arquivo...' : 'Processar planilha' }}
           </button>
+        </div>
+
+        <!-- ============ ERROS ENCONTRADOS ============ -->
+        <div v-if="upload.totalErros > 0" class="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+          <p class="flex items-center gap-2 text-[11px] font-medium text-red-400">
+            <AppIcon name="alert" class="w-3.5 h-3.5 shrink-0" />
+            {{ upload.totalErros }} {{ upload.totalErros === 1 ? 'inconsistência encontrada' : 'inconsistências encontradas' }}
+          </p>
+
+          <ul class="mt-3 space-y-1.5 max-h-40 overflow-y-auto">
+            <li v-for="(item, i) in upload.erros" :key="i" class="text-[11px] text-red-300/80 leading-relaxed">
+              <span v-if="item.linha" class="font-mono text-red-400/60">L{{ item.linha }}</span>
+              {{ item.mensagem }}
+            </li>
+          </ul>
+        </div>
+
+        <!-- ============ PRÉVIA DOS DADOS TRATADOS ============ -->
+        <div v-if="upload.temDados" class="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-5">
+          <div class="flex items-baseline justify-between">
+            <h2 class="text-sm font-medium text-zinc-100">Prévia dos dados tratados</h2>
+            <span class="text-[10px] font-mono text-zinc-600">
+              {{ upload.totalClientes }} {{ upload.totalClientes === 1 ? 'linha' : 'linhas' }}
+            </span>
+          </div>
+
+          <!-- Indicadores vindos dos getters do Pinia -->
+          <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div class="rounded-lg border border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5">
+              <p class="text-[10px] text-zinc-500">Clientes</p>
+              <p class="text-sm text-zinc-100 mt-0.5">{{ upload.totalClientes }}</p>
+            </div>
+            <div class="rounded-lg border border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5">
+              <p class="text-[10px] text-zinc-500">Nível A</p>
+              <p class="text-sm text-emerald-400 mt-0.5">{{ upload.clientesNivelA }}</p>
+            </div>
+            <div class="rounded-lg border border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5">
+              <p class="text-[10px] text-zinc-500">Segmentos</p>
+              <p class="text-sm text-zinc-100 mt-0.5">{{ upload.resumoPorSegmento.length }}</p>
+            </div>
+            <div class="rounded-lg border border-zinc-800/50 bg-zinc-950/40 px-3 py-2.5">
+              <p class="text-[10px] text-zinc-500">Faturamento</p>
+              <p class="text-sm text-zinc-100 mt-0.5">{{ formatarReal(upload.faturamentoTotal) }}</p>
+            </div>
+          </div>
+
+          <!-- Tabela de conferência -->
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="text-[10px] uppercase tracking-wide text-zinc-600">
+                  <th class="font-normal pb-2 pr-3">Cliente</th>
+                  <th class="font-normal pb-2 pr-3">Segmento</th>
+                  <th class="font-normal pb-2 pr-3">Nível</th>
+                  <th class="font-normal pb-2 text-right">Faturamento</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="cliente in upload.dadosTratados.slice(0, LIMITE_PREVIA)"
+                  :key="cliente.id"
+                  class="border-t border-zinc-800/50">
+                  <td class="py-2 pr-3 text-xs text-zinc-200">
+                    {{ cliente.nome || '—' }}
+                  </td>
+                  <td class="py-2 pr-3 text-xs text-zinc-400">
+                    {{ cliente.segmento || '—' }}
+                  </td>
+                  <td class="py-2 pr-3">
+                    <span
+                      v-if="cliente.nivel"
+                      class="rounded-md px-1.5 py-0.5 text-[10px]"
+                      :class="estiloNivel[cliente.nivel]">
+                      {{ cliente.nivel }}
+                    </span>
+                    <span v-else class="text-xs text-zinc-600">—</span>
+                  </td>
+                  <td class="py-2 text-xs text-zinc-300 text-right font-mono">
+                    {{ formatarReal(cliente.faturamento) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p v-if="upload.totalClientes > LIMITE_PREVIA" class="mt-3 text-[10px] text-zinc-600">
+            Mostrando as primeiras {{ LIMITE_PREVIA }} linhas de {{ upload.totalClientes }}.
+          </p>
         </div>
 
         <!-- ============ HISTÓRICO ============ -->
@@ -190,6 +264,21 @@ async function enviar() {
             </div>
           </li>
         </ul>
+
+        <!-- Resumo por segmento aparece junto com a prévia -->
+        <div v-if="upload.temDados" class="mt-6 border-t border-zinc-800/60 pt-5">
+          <h3 class="text-xs font-medium text-zinc-300">Clientes por segmento</h3>
+
+          <ul class="mt-3 space-y-2">
+            <li
+              v-for="item in upload.resumoPorSegmento"
+              :key="item.segmento"
+              class="flex items-center justify-between text-[11px]">
+              <span class="text-zinc-400 truncate">{{ item.segmento }}</span>
+              <span class="font-mono text-zinc-300 shrink-0 ml-2">{{ item.quantidade }}</span>
+            </li>
+          </ul>
+        </div>
       </aside>
     </div>
   </div>

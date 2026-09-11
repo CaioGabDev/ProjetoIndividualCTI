@@ -3,7 +3,7 @@
   Enquanto os endpoints não existem, as telas usam os dados de src/data/mock.js.
   Quando o back estiver pronto, é só chamar estas funções no lugar do mock.
 */
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api'
+const BASE_URL = import.meta.env?.VITE_API_URL || 'http://localhost:8080/api'
 
 async function request(caminho, opcoes = {}) {
   const resposta = await fetch(`${BASE_URL}${caminho}`, {
