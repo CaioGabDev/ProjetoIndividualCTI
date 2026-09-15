@@ -1,5 +1,7 @@
+import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
 import { estaLogado } from '../services/auth.js'
+import { deveAnimar } from '../services/preferencias.js'
 
 // Layout do painel interno (sidebar + topbar)
 import AppLayout from '../layouts/AppLayout.vue'
@@ -58,8 +60,45 @@ router.beforeEach((to) => {
   return true
 })
 
-router.afterEach((to) => {
+/*
+  ============ VIEW TRANSITIONS ============
+  API nativa do navegador: ele fotografa a tela ANTES da troca, fotografa
+  DEPOIS, e faz a transição entre as duas fotos — fora da thread principal.
+
+  A dança abaixo existe porque o navegador precisa do DOM novo já pronto
+  dentro do callback, e quem atualiza o DOM é o Vue, depois que a navegação
+  termina. Então:
+
+    1. beforeResolve segura a navegação devolvendo uma promessa;
+    2. dentro de startViewTransition, liberamos a navegação (`seguir`);
+    3. o callback devolve outra promessa, que só é resolvida no afterEach,
+       depois do nextTick — ou seja, com a tela nova já renderizada;
+    4. aí o navegador tira a segunda foto e anima.
+
+  Sem suporte (Firefox, hoje) nada disso roda e o <transition> do AppLayout
+  assume — a tela continua funcionando igual.
+*/
+let liberarTransicao = null
+
+router.beforeResolve((to, from) => {
+  if (!document.startViewTransition || !deveAnimar()) return
+  if (!from.name) return              // primeira carga da página não tem "antes"
+
+  return new Promise((seguir) => {
+    document.startViewTransition(() => {
+      seguir()
+      return new Promise((resolver) => { liberarTransicao = resolver })
+    })
+  })
+})
+
+router.afterEach(async (to) => {
   document.title = to.meta.titulo || 'Âncora'
+
+  if (!liberarTransicao) return
+  await nextTick()                    // espera o Vue pintar a tela nova
+  liberarTransicao()
+  liberarTransicao = null
 })
 
 export default router

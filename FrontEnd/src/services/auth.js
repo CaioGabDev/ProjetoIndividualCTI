@@ -48,3 +48,20 @@ export const usuarioAtual = reactive({
 export function estaLogado() {
   return estado.sessao !== null
 }
+
+/*
+  Carrega o perfil da conta.
+
+  Hoje devolve o que está na sessão local; quando o back expuser
+  GET /api/usuarios/me, é só trocar o corpo. O atraso existe pelo mesmo motivo
+  das outras telas: manter o estado de carregamento vivo e testado.
+*/
+export function carregarPerfil() {
+  return new Promise(resolve => {
+    setTimeout(() => resolve({
+      nome: usuarioAtual.nome,
+      email: usuarioAtual.email,
+      cargo: usuarioAtual.cargo,
+    }), 400)
+  })
+}

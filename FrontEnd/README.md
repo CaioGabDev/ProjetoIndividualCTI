@@ -107,7 +107,9 @@ Planilha Excel → Vue 3 (Front-end) → Spring Boot (Java) → Python (Ciência
 ```
 src/
 ├── assets/              # imagens, ícones, fontes
-├── components/          # componentes reutilizáveis (cards, tabelas, badges)
+├── components/          # componentes reutilizáveis (Grafico, MarcaAncora, AppIcon...)
+├── directives/
+│   └── revelar.js       # v-revelar: anima a entrada dos blocos ao rolar a página
 ├── router/
 │   └── index.js         # definição das rotas
 ├── stores/
@@ -119,7 +121,9 @@ src/
 │   ├── Clientes.vue
 │   └── Upload.vue
 ├── services/
-│   └── api.js            # (futuro) cliente Axios para a API Spring Boot
+│   ├── api.js            # (futuro) cliente Axios para a API Spring Boot
+│   ├── auth.js           # sessão do usuário (hoje em localStorage)
+│   └── exportar.js       # geração dos arquivos .xlsx (SheetJS)
 ├── App.vue
 ├── main.js
 └── style.css
@@ -178,19 +182,24 @@ npm run preview
 ```json
 {
   "dependencies": {
-    "vue": "^3.x",
-    "vue-router": "^4.x",
-    "pinia": "^2.x",
-    "xlsx": "^0.x",
-    "chart.js": "^4.x"
+    "vue": "^3.5",
+    "vue-router": "^4.6",
+    "pinia": "^4.0",
+    "xlsx": "0.20.2",
+    "chart.js": "^4.5",
+    "tailwindcss": "^4.3",
+    "@fontsource-variable/hanken-grotesk": "^5.3",
+    "@fontsource-variable/jetbrains-mono": "^5.3"
   },
   "devDependencies": {
-    "vite": "^5.x",
-    "@vitejs/plugin-vue": "^5.x",
-    "tailwindcss": "^3.x"
+    "vite": "^8.2",
+    "@vitejs/plugin-vue": "^6.0"
   }
 }
 ```
+
+> As fontes são auto-hospedadas via `@fontsource`: o projeto não depende de CDN
+> nem de internet para renderizar com a tipografia correta.
 
 > Confira as versões exatas instaladas no `package.json` do repositório.
 
@@ -205,6 +214,14 @@ npm run preview
 - [x] Prévia dos dados tratados antes do envio
 - [x] Dashboard com KPIs e gráficos
 - [x] Listagem de clientes com filtros
+- [x] Exportação da carteira em `.xlsx` (respeitando o filtro da tela)
+- [x] Exportação da planilha tratada após o upload
+- [x] Leitura da carteira: insights escritos a partir dos dados
+- [x] Painel responsivo (sidebar vira gaveta no celular)
+- [x] Gráficos clicáveis: a barra/fatia leva para a carteira já filtrada
+- [x] Sparkline de tendência nos cartões de indicador
+- [x] Esqueleto de carregamento e progresso real na leitura da planilha
+- [x] Preferência de movimento (seguir o sistema / ligada / desligada)
 - [ ] Integração com API Spring Boot
 - [ ] Persistência em PostgreSQL
 - [ ] Autenticação real (JWT / sessão)

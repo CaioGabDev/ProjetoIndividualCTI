@@ -64,9 +64,15 @@ export const useUploadStore = defineStore('upload', {
     dadosTratados: [],      // linhas já padronizadas
     erros: [],              // { linha, mensagem } encontrados na validação
     carregando: false,      // controla o "Lendo arquivo..."
+    progresso: { atual: 0, total: 0 },   // linhas já tratadas / total
   }),
 
   getters: {
+    /* 0 a 100 para a barra. Sem total conhecido ainda, fica em 0. */
+    percentualProgresso: (state) => state.progresso.total
+      ? Math.round((state.progresso.atual / state.progresso.total) * 100)
+      : 0,
+
     totalClientes:  (state) => state.dadosTratados.length,
     totalErros:     (state) => state.erros.length,
     temDados:       (state) => state.dadosTratados.length > 0,
@@ -153,14 +159,47 @@ export const useUploadStore = defineStore('upload', {
         }
 
         this.dadosOriginais = linhas
-        this.dadosTratados = numeradas.map(({ linha, numeroLinha }) => this.tratarLinha(linha, numeroLinha))
+        this.dadosTratados = await this.tratarEmLotes(numeradas)
         return true
       } catch (e) {
         this.erros.push({ linha: null, mensagem: `Não foi possível ler o arquivo: ${e.message}` })
         return false
       } finally {
         this.carregando = false
+        this.progresso = { atual: 0, total: 0 }
       }
+    },
+
+    /*
+      Trata as linhas em lotes, devolvendo o controle ao navegador entre um e
+      outro.
+
+      Um `.map()` em 3.000 linhas roda de uma vez só e trava a aba inteira: nada
+      é repintado no meio, então a barra de progresso ficaria parada em 0% e
+      pularia direto para 100% — além de a página não responder a cliques.
+      O `setTimeout(0)` encerra a tarefa atual e agenda a próxima, dando ao
+      navegador a brecha para pintar o quadro com o progresso novo.
+    */
+    async tratarEmLotes(numeradas, tamanhoLote = 400) {
+      const tratadas = []
+      this.progresso = { atual: 0, total: numeradas.length }
+
+      for (let inicio = 0; inicio < numeradas.length; inicio += tamanhoLote) {
+        const lote = numeradas.slice(inicio, inicio + tamanhoLote)
+
+        for (const { linha, numeroLinha } of lote) {
+          tratadas.push(this.tratarLinha(linha, numeroLinha))
+        }
+
+        this.progresso.atual = tratadas.length
+
+        /* Planilha pequena termina em um lote só e nem chega a piscar a barra. */
+        if (inicio + tamanhoLote < numeradas.length) {
+          await new Promise(resolve => setTimeout(resolve, 0))
+        }
+      }
+
+      return tratadas
     },
 
     /*
@@ -205,6 +244,7 @@ export const useUploadStore = defineStore('upload', {
       this.dadosTratados = []
       this.erros = []
       this.carregando = false
+      this.progresso = { atual: 0, total: 0 }
     },
 
     /*

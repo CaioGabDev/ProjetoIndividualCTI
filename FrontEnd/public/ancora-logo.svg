@@ -1,0 +1,18 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Âncora">
+  <title>Âncora</title>
+
+  <!-- Badge da marca -->
+  <rect width="512" height="512" rx="128" fill="#0F1115" />
+
+  <!-- Trilha do gráfico: contraste sutil atrás dos braços da âncora -->
+  <circle cx="256" cy="280" r="112" fill="none" stroke="#0A2A20" stroke-width="32" />
+
+  <!-- Haste central: direção e estabilidade -->
+  <line x1="256" y1="192" x2="256" y2="392" stroke="#1D9E75" stroke-width="32" stroke-linecap="round" />
+
+  <!-- Braços da âncora, que também leem como um gráfico de rosca -->
+  <path d="M 159 224 A 112 112 0 0 0 353 224" fill="none" stroke="#1D9E75" stroke-width="32" stroke-linecap="round" />
+
+  <!-- Argola superior: ponto de conexão -->
+  <circle cx="256" cy="148" r="28" fill="#0F1115" stroke="#1D9E75" stroke-width="32" />
+</svg>

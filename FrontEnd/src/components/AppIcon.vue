@@ -25,6 +25,9 @@ const paths = {
   clock: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 7v5l3 2',
   shield: 'M12 3l8 3v5c0 5-3.4 8.7-8 10-4.6-1.3-8-5-8-10V6l8-3z',
   alert: 'M12 8v5M12 17h.01M10.3 3.9L2.4 17a2 2 0 001.7 3h15.8a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z',
+  download: 'M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 18h14',
+  menu: 'M4 7h16M4 12h16M4 17h16',
+  fechar: 'M6 6l12 12M18 6L6 18',
   chevronLeft: 'M14 7l-5 5 5 5',
   chevronRight: 'M10 7l5 5-5 5',
 }
