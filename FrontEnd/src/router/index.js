@@ -29,6 +29,7 @@ const routes = [
       { path: 'dashboard', name: 'Dashboard', component: () => import('../views/Dashboard.vue'), meta: { titulo: 'Dashboard · Âncora' } },
       { path: 'clientes', name: 'Clientes', component: () => import('../views/Clientes.vue'), meta: { titulo: 'Clientes · Âncora' } },
       { path: 'upload', name: 'Upload', component: () => import('../views/Upload.vue'), meta: { titulo: 'Enviar planilha · Âncora' } },
+      { path: 'relatorio', name: 'Relatorio', component: () => import('../views/Relatorio.vue'), meta: { titulo: 'Relatório de validação · Âncora' } },
       { path: 'configuracoes', name: 'Configuracoes', component: () => import('../views/Configuracoes.vue'), meta: { titulo: 'Configurações · Âncora' } },
     ],
   },

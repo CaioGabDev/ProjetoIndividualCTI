@@ -19,6 +19,7 @@ const links = [
   { name: 'Dashboard', label: 'Dashboard', icon: 'dashboard' },
   { name: 'Clientes',  label: 'Clientes',  icon: 'clientes' },
   { name: 'Upload',    label: 'Enviar planilha', icon: 'upload' },
+  { name: 'Relatorio', label: 'Validação',       icon: 'file' },
 ]
 
 const ativo = (nome) => route.name === nome

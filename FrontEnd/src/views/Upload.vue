@@ -23,7 +23,8 @@ onMounted(async () => {
 const arrastando = ref(false)
 const inputArquivo = ref(null)
 
-const LIMITE_PREVIA = 50 // a tabela mostra só o começo; o total vem dos getters
+const LIMITE_PREVIA = 50       // a tabela mostra só o começo; o total vem dos getters
+const LIMITE_ERROS_PREVIA = 30 // aqui só cabe uma amostra: a lista inteira está no relatório
 
 const checklist = [
   { icone: 'check',  cor: 'text-emerald-400', titulo: 'Cabeçalho na primeira linha', texto: 'Precisa ter nome do cliente, segmento, serviço e faturamento — nessa ou em outra ordem.' },
@@ -69,7 +70,7 @@ async function processar() {
   historico.value.unshift({
     id: Date.now(),
     arquivo: nomeArquivo,
-    detalhe: `${upload.totalClientes} linhas · ${formatarTamanho(tamanho)}`,
+    detalhe: `${upload.totalRegistros} linhas · ${upload.registrosValidos} válidas · ${formatarTamanho(tamanho)}`,
     quando: 'agora',
     status: upload.totalErros > 0 ? 'Erro de formato' : 'Processado',
   })
@@ -154,7 +155,9 @@ async function processar() {
         <!-- ============ PROGRESSO DA LEITURA ============ -->
         <div v-if="upload.carregando && upload.progresso.total" class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
           <div class="flex items-baseline justify-between text-[11px]">
-            <span class="text-zinc-300">Padronizando as linhas da planilha</span>
+            <span class="text-zinc-300">
+              {{ upload.etapa === 'validando' ? 'Validando os registros' : 'Padronizando as linhas da planilha' }}
+            </span>
             <span class="font-mono text-zinc-500">
               {{ upload.progresso.atual.toLocaleString('pt-BR') }} de
               {{ upload.progresso.total.toLocaleString('pt-BR') }}
@@ -182,11 +185,21 @@ async function processar() {
           </p>
 
           <ul class="mt-3 space-y-1.5 max-h-40 overflow-y-auto">
-            <li v-for="(item, i) in upload.erros" :key="i" class="text-[11px] text-red-300/80 leading-relaxed">
+            <li v-for="(item, i) in upload.erros.slice(0, LIMITE_ERROS_PREVIA)" :key="i" class="text-[11px] text-red-300/80 leading-relaxed">
               <span v-if="item.linha" class="font-mono text-red-400/60">L{{ item.linha }}</span>
+              <span v-if="item.campo" class="text-red-400/60">{{ item.campo }} ·</span>
               {{ item.mensagem }}
             </li>
           </ul>
+
+          <!-- A lista completa, com filtro e contagem por tipo, vive na tela de relatório -->
+          <router-link
+            v-if="upload.temRelatorio"
+            :to="{ name: 'Relatorio' }"
+            class="mt-3 inline-flex items-center gap-1.5 text-[11px] text-red-400 transition-colors hover:text-red-300">
+            Ver relatório completo
+            <AppIcon name="chevronRight" class="h-3 w-3" />
+          </router-link>
         </div>
 
         <!-- ============ PRÉVIA DOS DADOS TRATADOS ============ -->
@@ -199,13 +212,22 @@ async function processar() {
               </p>
             </div>
 
-            <!-- Fecha o ciclo: entrou planilha bagunçada, sai planilha padronizada -->
-            <button
-              class="flex items-center gap-2 rounded-lg border border-zinc-800 px-3.5 py-2 text-xs text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50"
-              @click="exportarDadosTratados(upload.dadosTratados)">
-              <AppIcon name="download" class="h-3.5 w-3.5" />
-              Baixar planilha tratada
-            </button>
+            <div class="flex items-center gap-2">
+              <router-link
+                :to="{ name: 'Relatorio' }"
+                class="flex items-center gap-2 rounded-lg border border-zinc-800 px-3.5 py-2 text-xs text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50">
+                <AppIcon name="file" class="h-3.5 w-3.5" />
+                Relatório de validação
+              </router-link>
+
+              <!-- Fecha o ciclo: entrou planilha bagunçada, sai planilha padronizada -->
+              <button
+                class="flex items-center gap-2 rounded-lg border border-zinc-800 px-3.5 py-2 text-xs text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-800/50"
+                @click="exportarDadosTratados(upload.dadosTratados)">
+                <AppIcon name="download" class="h-3.5 w-3.5" />
+                Baixar planilha tratada
+              </button>
+            </div>
           </div>
 
           <!-- Indicadores vindos dos getters do Pinia -->
