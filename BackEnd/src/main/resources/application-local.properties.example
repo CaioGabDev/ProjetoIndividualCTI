@@ -1,0 +1,24 @@
+# ============================================================================
+# SEGREDOS LOCAIS - ESTE ARQUIVO NUNCA VAI PARA O GIT (veja Backend/.gitignore)
+# ============================================================================
+# Usado quando a aplicacao sobe com o perfil "local":
+#   .\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=local"
+
+# --- Azure Database for PostgreSQL ---------------------------------------
+# DB_HOST: o "Server name" do portal do Azure (o mesmo que aparece no DBeaver).
+DB_HOST=seuservidor.postgres.database.azure.com
+DB_PORT=5432
+
+# DB_NAME: o banco da aplicacao. Crie no DBeaver com:  CREATE DATABASE cti_insights;
+DB_NAME=cti_insights
+
+# DB_USER: no Flexible Server e so o nome, SEM @servidor.
+DB_USER=COLOQUE_AQUI_O_USUARIO
+
+# DB_PASSWORD: a senha desse usuario do banco.
+DB_PASSWORD=COLOQUE_AQUI_A_SENHA
+
+# --- Chave que assina o token JWT ----------------------------------------
+# Ja gerada (48 bytes aleatorios em base64). Nao precisa trocar.
+# Se um dia quiser outra:  openssl rand -base64 48
+JWT_SECRET=COLE_AQUI_A_CHAVE (gere com: openssl rand -base64 48)
