@@ -1,21 +1,32 @@
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import MarcaAncora from '../components/MarcaAncora.vue'
-import { usuarioAtual } from '../services/auth.js'
+import { mensagemDeErro } from '../services/api.js'
+import { useAuthStore } from '../stores/auth.js'
 
 const router = useRouter()
 const route = useRoute()
+const auth = useAuthStore()
 
 const email = ref('')
 const senha = ref('')
 const mostrarSenha = ref(false)
-const manterConectado = ref(false)
 const erro = ref('')
+const aviso = ref('')
 const carregando = ref(false)
+
+/* O interceptor do api.js redireciona para /login?expirada=1 quando a API
+   devolve 401 com token salvo. Aqui só traduzimos isso numa frase. */
+onMounted(() => {
+  if (route.query.expirada) {
+    aviso.value = 'Sua sessão expirou. Entre novamente para continuar.'
+  }
+})
 
 async function entrar() {
   erro.value = ''
+  aviso.value = ''
 
   if (!email.value || !senha.value) {
     erro.value = 'Preencha e-mail e senha para continuar.'
@@ -24,14 +35,18 @@ async function entrar() {
 
   carregando.value = true
   try {
-    /* Quando o back tiver /api/auth/login, troque este bloco pela chamada real. */
-    usuarioAtual.entrar({ email: email.value, nome: 'Caio Gabriel', cargo: 'Gestor comercial' })
+    await auth.entrar(email.value, senha.value)
 
     /* Volta pra página que o usuário tentou abrir antes de logar, ou vai pro dashboard */
     const destino = route.query.redirect || { name: 'Dashboard' }
     router.push(destino)
-  } catch {
-    erro.value = 'Não foi possível entrar. Verifique suas credenciais.'
+  } catch (e) {
+    /* 401 = e-mail inexistente OU senha errada. A mensagem é a mesma nos dois
+       casos de propósito: dizer qual dos dois falhou entregaria a quem ataca
+       a informação de quais e-mails têm conta no sistema. */
+    erro.value = e.response?.status === 401
+      ? 'E-mail ou senha inválidos.'
+      : mensagemDeErro(e, 'Não foi possível entrar. Tente novamente.')
   } finally {
     carregando.value = false
   }
@@ -120,13 +135,13 @@ async function entrar() {
             </div>
           </div>
 
-          <div class="flex items-center justify-between text-[11px]">
-            <label class="flex cursor-pointer items-center gap-2 text-zinc-400">
-              <input v-model="manterConectado" type="checkbox" class="accent-emerald-500" />
-              Manter conectado
-            </label>
+          <div class="flex items-center justify-end text-[11px]">
             <a href="#" class="text-emerald-400 transition-colors hover:text-emerald-300">Esqueci minha senha</a>
           </div>
+
+          <p v-if="aviso" role="status" class="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-400">
+            {{ aviso }}
+          </p>
 
           <p v-if="erro" role="alert" class="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">
             {{ erro }}
@@ -155,7 +170,9 @@ async function entrar() {
 
         <p class="mt-8 text-center text-[11px] text-zinc-600">
           Sem acesso ao painel?
-          <a href="#" class="text-zinc-300 transition-colors hover:text-emerald-400">Fale com o administrador</a>
+          <router-link :to="{ name: 'Registrar' }" class="text-emerald-400 transition-colors hover:text-emerald-300">
+            Criar conta
+          </router-link>
         </p>
       </div>
     </section>

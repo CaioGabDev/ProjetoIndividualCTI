@@ -2,7 +2,7 @@
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
 import MarcaAncora from './MarcaAncora.vue'
-import { usuarioAtual } from '../services/auth.js'
+import { useAuthStore } from '../stores/auth.js'
 
 /*
   `aberto` só tem efeito abaixo do breakpoint lg: é a gaveta do celular.
@@ -13,6 +13,7 @@ defineEmits(['fechar'])
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 
 /* Os "name" precisam bater com os nomes das rotas em src/router/index.js */
 const links = [
@@ -25,7 +26,7 @@ const links = [
 const ativo = (nome) => route.name === nome
 
 function sair() {
-  usuarioAtual.sair()
+  auth.sair()
   router.push({ name: 'Login' })
 }
 </script>
@@ -93,11 +94,11 @@ function sair() {
 
       <div class="mt-2 flex items-center gap-2.5 rounded-lg bg-zinc-800/40 px-3 py-2.5">
         <div class="w-7 h-7 shrink-0 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[10px] font-medium text-emerald-400">
-          {{ usuarioAtual.iniciais }}
+          {{ auth.iniciais }}
         </div>
         <div class="leading-tight min-w-0 flex-1">
-          <p class="text-xs text-zinc-200 truncate">{{ usuarioAtual.nome }}</p>
-          <p class="text-[10px] text-zinc-500 truncate">{{ usuarioAtual.cargo }}</p>
+          <p class="text-xs text-zinc-200 truncate">{{ auth.nome }}</p>
+          <p class="text-[10px] text-zinc-500 truncate">{{ auth.cargo }}</p>
         </div>
         <button
           class="rounded-md p-1 text-zinc-600 transition-colors hover:text-red-400"

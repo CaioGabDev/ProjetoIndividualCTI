@@ -1,7 +1,8 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import Esqueleto from '../components/Esqueleto.vue'
-import { carregarPerfil, usuarioAtual } from '../services/auth.js'
+import { mensagemDeErro } from '../services/api.js'
+import { useAuthStore } from '../stores/auth.js'
 import { preferencias } from '../services/preferencias.js'
 
 /*
@@ -9,20 +10,29 @@ import { preferencias } from '../services/preferencias.js'
   precisava de um destino. Amplie conforme o back-end for crescendo.
 */
 /*
-  O perfil virá de GET /api/usuarios/me (o back já tem o UsuarioController).
-  Por isso a tela já carrega de forma assíncrona, com esqueleto nos campos.
+  O perfil vem de GET /api/auth/me — a chamada confirma, de quebra, que o
+  token ainda vale. Se não valer, o interceptor do api.js recebe o 401 e
+  devolve a pessoa ao login antes mesmo desta tela aparecer.
 */
+const auth = useAuthStore()
+
 const nome = ref('')
 const email = ref('')
 const cargo = ref('')
 const carregando = ref(true)
+const erro = ref('')
 
 onMounted(async () => {
-  const perfil = await carregarPerfil()
-  nome.value = perfil.nome
-  email.value = perfil.email
-  cargo.value = perfil.cargo
-  carregando.value = false
+  try {
+    const perfil = await auth.revalidar()
+    nome.value = perfil.nome
+    email.value = perfil.email
+    cargo.value = perfil.cargo
+  } catch (e) {
+    erro.value = mensagemDeErro(e, 'Não foi possível carregar seu perfil.')
+  } finally {
+    carregando.value = false
+  }
 })
 
 const notificacoes = ref([
@@ -42,11 +52,22 @@ const modosAnimacao = [
 ]
 
 const salvo = ref(false)
+const salvando = ref(false)
 
-function salvar() {
-  usuarioAtual.entrar({ nome: nome.value, email: email.value, cargo: cargo.value })
-  salvo.value = true
-  setTimeout(() => { salvo.value = false }, 2500)
+async function salvar() {
+  erro.value = ''
+  salvando.value = true
+  try {
+    /* Não mandamos senha: o AtualizarUsuarioDTO entende campo vazio como
+       "mantenha a senha atual". Trocar senha é outra tela. */
+    await auth.atualizarPerfil({ nome: nome.value, email: email.value, cargo: cargo.value })
+    salvo.value = true
+    setTimeout(() => { salvo.value = false }, 2500)
+  } catch (e) {
+    erro.value = mensagemDeErro(e, 'Não foi possível salvar as alterações.')
+  } finally {
+    salvando.value = false
+  }
 }
 </script>
 
@@ -154,14 +175,17 @@ function salvar() {
       </p>
     </section>
 
-    <div class="flex items-center gap-3">
+    <div class="flex flex-wrap items-center gap-3">
       <button
         class="rounded-lg bg-emerald-500 px-5 py-2.5 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="carregando"
+        :disabled="carregando || salvando"
         @click="salvar">
-        Salvar alterações
+        {{ salvando ? 'Salvando...' : 'Salvar alterações' }}
       </button>
       <span v-if="salvo" role="status" class="text-[11px] text-emerald-400">Alterações salvas.</span>
+      <span v-if="erro" role="alert" class="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-[11px] text-red-400">
+        {{ erro }}
+      </span>
     </div>
   </div>
 </template>

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import * as XLSX from 'xlsx'
-import { api } from '../services/api.js'
+import { api, mensagemDeErro } from '../services/api.js'
 
 const EXTENSOES = ['.xlsx', '.xls', '.csv']
 const TAMANHO_MAXIMO = 10 * 1024 * 1024 // 10MB
@@ -11,14 +11,18 @@ const TAMANHO_MAXIMO = 10 * 1024 * 1024 // 10MB
   "Nome do Cliente", "nome_cliente" e "cliente" caiam todos em `nome`.
 */
 const COLUNAS = {
-  nome:        ['nome', 'cliente', 'nomecliente', 'nomedocliente', 'razaosocial'],
-  cnpj:        ['cnpj', 'documento', 'cnpjcpf'],
-  email:       ['email', 'emailcliente', 'emailcontato', 'contato'],
-  segmento:    ['segmento', 'setor', 'ramo'],
-  nivel:       ['nivel', 'nivelcliente', 'niveldocliente', 'classificacao', 'classe'],
-  servico:     ['servico', 'servicoprestado', 'produto'],
-  faturamento: ['faturamento', 'valor', 'valorfaturamento', 'receita', 'faturamentoanual'],
-  consultor:   ['consultor', 'responsavel', 'vendedor'],
+  codigo:          ['codigo', 'codigocliente', 'codigodocliente', 'cod'],
+  nome:            ['nome', 'cliente', 'nomecliente', 'nomedocliente', 'razaosocial'],
+  cnpj:            ['cnpj', 'documento', 'cnpjcpf'],
+  email:           ['email', 'emailcliente', 'emailcontato', 'contato'],
+  segmento:        ['segmento', 'setor', 'ramo'],
+  nivel:           ['nivel', 'nivelcliente', 'niveldocliente', 'classificacao', 'classe'],
+  servico:         ['servico', 'servicos', 'servicoscontratados', 'servicoprestado', 'produto'],
+  faturamento:     ['faturamento', 'valor', 'valorfaturamento', 'receita', 'faturamentoanual'],
+  consultor:       ['consultor', 'responsavel', 'vendedor'],
+  dataContratacao: ['datacontratacao', 'datadecontratacao', 'data'],
+  cidade:          ['cidade', 'municipio'],
+  uf:              ['uf', 'estado'],
 }
 
 /* Variações de segmento que a planilha traz e o nome único que o sistema usa. */
@@ -29,6 +33,7 @@ const SEGMENTOS = {
   VAREJO: 'Varejo',        SAUDE: 'Saúde',
   AGRO: 'Agro',            AGRONEGOCIO: 'Agro',
   EDUCACAO: 'Educação',    ENSINO: 'Educação',
+  TECNOLOGIA: 'Tecnologia', TI: 'Tecnologia',
 }
 
 /*
@@ -47,18 +52,39 @@ const VALIDACOES = {
 
 /* Nome de cada campo como ele aparece para o usuário no relatório. */
 const ROTULOS = {
-  nome:        'Cliente',
-  cnpj:        'CNPJ',
-  email:       'E-mail',
-  segmento:    'Segmento',
-  nivel:       'Nível',
-  servico:     'Serviço',
-  faturamento: 'Faturamento',
-  consultor:   'Consultor',
+  codigo:          'Código',
+  nome:            'Cliente',
+  cnpj:            'CNPJ',
+  email:           'E-mail',
+  segmento:        'Segmento',
+  nivel:           'Nível',
+  servico:         'Serviço',
+  faturamento:     'Faturamento',
+  consultor:       'Consultor',
+  dataContratacao: 'Data de contratação',
+  cidade:          'Cidade',
+  uf:              'UF',
 }
 
 /* Sem estes três a linha não vira cliente no sistema. */
 const CAMPOS_OBRIGATORIOS = ['nome', 'segmento', 'nivel']
+
+/*
+  Também obrigatórios no ClienteDTO do back (POST /clientes/validar), mas só
+  cobrados quando a planilha tem a coluna: uma planilha antiga sem "código"
+  não deve ganhar um erro por linha.
+*/
+const OBRIGATORIOS_SE_HOUVER_COLUNA = ['codigo', 'consultor', 'servico', 'dataContratacao']
+
+/*
+  Erros que o back também recusaria. Linha com um destes não vai para o
+  servidor; "espaços" e "padronização" não bloqueiam porque já foram
+  corrigidos na leitura.
+*/
+const TIPOS_QUE_BLOQUEIAM = ['obrigatorio', 'duplicado', 'email', 'formato']
+
+/* Mesmo padrão do @Pattern da UF no ClienteDTO. */
+const UF_REGEX = /^[A-Za-z]{2}$/
 
 /*
   Teto de erros guardados em detalhe. Uma planilha de 3.000 linhas toda errada
@@ -98,16 +124,82 @@ function converterValor(bruto) {
   return Number.isFinite(numero) ? numero : 0
 }
 
+/*
+  Data da célula -> "2025-01-15", o formato que o LocalDate do Java entende.
+
+  O Excel guarda data como número de dias (15/01/2025 = 45672), e é assim que
+  o SheetJS entrega a célula. Planilha digitada como texto pode trazer
+  "15/01/2025" ou já "2025-01-15". Qualquer outra coisa — ou data impossível
+  como 30/02 — volta '' e vira erro de formato na validação.
+*/
+function paraDataIso(bruto) {
+  const doisDigitos = (n) => String(n).padStart(2, '0')
+  let ano, mes, dia
+
+  if (typeof bruto === 'number') {
+    const partes = XLSX.SSF.parse_date_code(bruto)
+    if (!partes) return ''
+    ;({ y: ano, m: mes, d: dia } = partes)
+  } else {
+    const texto = String(bruto ?? '').trim()
+    const br = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+    const iso = texto.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+    if (br) [, dia, mes, ano] = br.map(Number)
+    else if (iso) [, ano, mes, dia] = iso.map(Number)
+    else return ''
+  }
+
+  /* new Date "corrige" 30/02 para 02/03 — se mudou, a data não existe. */
+  const data = new Date(Date.UTC(ano, mes - 1, dia))
+  if (data.getUTCFullYear() !== ano || data.getUTCMonth() !== mes - 1 || data.getUTCDate() !== dia) return ''
+
+  return `${ano}-${doisDigitos(mes)}-${doisDigitos(dia)}`
+}
+
+/*
+  Uma linha tratada no formato do ClienteDTO do Spring Boot.
+  Faturamento em branco vai como null (e não 0) para o back responder
+  "é obrigatório" em vez de "deve ser maior que zero".
+*/
+function paraClienteDTO(registro) {
+  const faturamentoVazio = String(registro._brutos.faturamento ?? '').trim() === ''
+
+  return {
+    codigoCliente: registro.codigo,
+    nomeCliente: registro.nome,
+    consultor: registro.consultor,
+    segmento: registro.segmento,
+    nivelCliente: registro.nivel,
+    faturamentoAnual: faturamentoVazio ? null : registro.faturamento,
+    servicosContratados: registro.servico,
+    dataContratacao: registro.dataContratacao || null,
+    cidade: registro.cidade,
+    uf: registro.uf,
+  }
+}
+
 /* Sobra de espaço na borda ("  Silva ") ou entre palavras ("Silva   ME"). */
 function temEspacoSobrando(bruto) {
   const texto = String(bruto ?? '')
   return texto !== texto.trim() || /\s{2,}/.test(texto.trim())
 }
 
-/* Chave para achar repetição: CNPJ quando existe, senão o nome normalizado. */
+/* Chave para achar repetição: código do cliente, depois CNPJ, senão o nome normalizado. */
 function chaveDuplicidade(cliente) {
+  if (cliente.codigo) return `codigo:${cliente.codigo.toUpperCase()}`
   const cnpj = cliente.cnpj.replace(/\D/g, '')
   return cnpj || normalizarChave(cliente.nome)
+}
+
+/* Estado da segunda validação, a do Spring Boot. */
+function servidorVazio() {
+  return {
+    status: '',          // '' | 'enviando' | 'ok' | 'erro'
+    enviados: 0,         // quantas linhas foram na requisição
+    validados: [],       // lista padronizada que o back devolveu
+    mensagem: '',        // frase geral do back ("Dados invalidos", "Codigo repetido...")
+    erros: [],           // { linha, campo, erro } — linha já convertida para a da planilha
+  }
 }
 
 /*
@@ -138,6 +230,7 @@ export const useUploadStore = defineStore('upload', {
     carregando: false,      // controla o "Lendo arquivo..."
     etapa: '',              // 'lendo' | 'tratando' | 'validando'
     progresso: { atual: 0, total: 0 },   // linhas já processadas / total
+    servidor: servidorVazio(),           // resultado do POST /clientes/validar
   }),
 
   getters: {
@@ -218,6 +311,18 @@ export const useUploadStore = defineStore('upload', {
 
     /* A tela de relatório só tem o que mostrar depois de uma análise concluída. */
     temRelatorio: (state) => Boolean(state.validadoEm),
+
+    /* Linhas com erro que o back também recusaria — essas não são enviadas. */
+    linhasBloqueadas: (state) => new Set(
+      state.erros
+        .filter(erro => erro.linha != null && TIPOS_QUE_BLOQUEIAM.includes(erro.tipo))
+        .map(erro => erro.linha),
+    ),
+
+    /* O que o Pinia aprovou: é isto que segue para o Spring Boot. */
+    registrosAprovados() {
+      return this.dadosTratados.filter(registro => !this.linhasBloqueadas.has(registro.id))
+    },
   },
 
   actions: {
@@ -238,6 +343,7 @@ export const useUploadStore = defineStore('upload', {
       this.analise = {}
       this.errosTruncados = false
       this.progresso = { atual: 0, total: 0 }
+      this.servidor = servidorVazio()
     },
 
     /*
@@ -374,6 +480,10 @@ export const useUploadStore = defineStore('upload', {
       antes com o depois (espaço sobrando, texto fora do padrão).
     */
     tratarLinha(linha, numeroLinha) {
+      const codigoBruto      = buscarCampo(linha, COLUNAS.codigo)
+      const dataBruta        = buscarCampo(linha, COLUNAS.dataContratacao)
+      const cidadeBruta      = buscarCampo(linha, COLUNAS.cidade)
+      const ufBruta          = buscarCampo(linha, COLUNAS.uf)
       const nomeBruto        = buscarCampo(linha, COLUNAS.nome)
       const cnpjBruto        = buscarCampo(linha, COLUNAS.cnpj)
       const emailBruto       = buscarCampo(linha, COLUNAS.email)
@@ -398,6 +508,7 @@ export const useUploadStore = defineStore('upload', {
 
       return {
         id: numeroLinha,
+        codigo: arrumarTexto(codigoBruto).toUpperCase(),
         nome: arrumarTexto(nomeBruto),
         cnpj: arrumarTexto(cnpjBruto),
         email: arrumarTexto(emailBruto).toLowerCase(),
@@ -406,8 +517,15 @@ export const useUploadStore = defineStore('upload', {
         servico: arrumarTexto(servicoBruto),
         faturamento: converterValor(faturamentoBruto),
         consultor: arrumarTexto(consultorBruto),
+        dataContratacao: paraDataIso(dataBruta),
+        cidade: arrumarTexto(cidadeBruta),
+        uf: arrumarTexto(ufBruta).toUpperCase(),
 
         _brutos: {
+          codigo: codigoBruto,
+          dataContratacao: dataBruta,
+          cidade: cidadeBruta,
+          uf: ufBruta,
           nome: nomeBruto,
           cnpj: cnpjBruto,
           email: emailBruto,
@@ -454,8 +572,15 @@ export const useUploadStore = defineStore('upload', {
       const temColuna = (campo) => this.colunasDetectadas.includes(campo)
 
       /* ---- 1. Campos obrigatórios vazios ---- */
-      for (const campo of CAMPOS_OBRIGATORIOS) {
+      const obrigatorios = [
+        ...CAMPOS_OBRIGATORIOS,
+        ...OBRIGATORIOS_SE_HOUVER_COLUNA.filter(temColuna),
+      ]
+
+      for (const campo of obrigatorios) {
         if (registro[campo]) continue
+        /* Data preenchida mas inválida é erro de formato (item 4), não de vazio. */
+        if (campo === 'dataContratacao' && String(brutos.dataContratacao ?? '').trim()) continue
 
         this.registrarErro({
           linha,
@@ -512,10 +637,18 @@ export const useUploadStore = defineStore('upload', {
         })
       }
 
+      /* Mesma regra do @NotNull + @Positive do ClienteDTO: vazio, zero e negativo não passam. */
       if (temColuna('faturamento')) {
         const faturamentoTexto = String(brutos.faturamento ?? '').trim()
 
-        if (faturamentoTexto && !/\d/.test(faturamentoTexto)) {
+        if (!faturamentoTexto) {
+          this.registrarErro({
+            linha,
+            campo: ROTULOS.faturamento,
+            tipo: 'obrigatorio',
+            mensagem: `${ROTULOS.faturamento} não preenchido.`,
+          })
+        } else if (!/\d/.test(faturamentoTexto)) {
           this.registrarErro({
             linha,
             campo: ROTULOS.faturamento,
@@ -523,15 +656,36 @@ export const useUploadStore = defineStore('upload', {
             valor: faturamentoTexto,
             mensagem: `"${faturamentoTexto}" não é um valor numérico.`,
           })
-        } else if (registro.faturamento < 0) {
+        } else if (registro.faturamento <= 0) {
           this.registrarErro({
             linha,
             campo: ROTULOS.faturamento,
             tipo: 'formato',
             valor: faturamentoTexto,
-            mensagem: 'Faturamento negativo.',
+            mensagem: 'O faturamento deve ser maior que zero.',
           })
         }
+      }
+
+      const dataTexto = String(brutos.dataContratacao ?? '').trim()
+      if (dataTexto && !registro.dataContratacao) {
+        this.registrarErro({
+          linha,
+          campo: ROTULOS.dataContratacao,
+          tipo: 'formato',
+          valor: dataTexto,
+          mensagem: `"${dataTexto}" não é uma data válida (use dd/mm/aaaa).`,
+        })
+      }
+
+      if (registro.uf && !UF_REGEX.test(registro.uf)) {
+        this.registrarErro({
+          linha,
+          campo: ROTULOS.uf,
+          tipo: 'formato',
+          valor: registro.uf,
+          mensagem: `"${registro.uf}" não é uma UF — use duas letras, como SP.`,
+        })
       }
 
       /* ---- 5. Textos que precisam ser padronizados ---- */
@@ -566,13 +720,57 @@ export const useUploadStore = defineStore('upload', {
       if (primeiraLinha) {
         this.registrarErro({
           linha,
-          campo: registro.cnpj ? ROTULOS.cnpj : ROTULOS.nome,
+          campo: registro.codigo ? ROTULOS.codigo : registro.cnpj ? ROTULOS.cnpj : ROTULOS.nome,
           tipo: 'duplicado',
-          valor: registro.cnpj || registro.nome,
+          valor: registro.codigo || registro.cnpj || registro.nome,
           mensagem: `Registro repetido — já aparece na linha ${primeiraLinha}.`,
         })
       } else {
         vistos.set(chave, linha)
+      }
+    },
+
+    /*
+      Segunda validação: manda as linhas para o Spring Boot (POST /clientes/validar).
+
+      Por padrão só vai o que o Pinia aprovou — é o fluxo normal. Com
+      `incluirLinhasComErro` vai tudo, para ver o back recusar o que a tela já
+      tinha apontado (o mesmo teste que se faz pelo Thunder Client).
+
+      O back responde com o índice do item na lista enviada; aqui convertemos
+      de volta para o número da linha no Excel, que é o que a pessoa procura.
+    */
+    async validarNoServidor({ incluirLinhasComErro = false } = {}) {
+      const linhas = incluirLinhasComErro ? this.dadosTratados : this.registrosAprovados
+
+      this.servidor = { ...servidorVazio(), status: 'enviando', enviados: linhas.length }
+
+      if (!linhas.length) {
+        this.servidor = { ...servidorVazio(), status: 'erro', mensagem: 'Nenhuma linha aprovada para enviar.' }
+        return false
+      }
+
+      try {
+        const validados = await api.validarClientes(linhas.map(paraClienteDTO))
+        this.servidor = { ...this.servidor, status: 'ok', validados }
+        return true
+      } catch (erro) {
+        const dados = erro.response?.data
+        this.servidor = {
+          ...this.servidor,
+          status: 'erro',
+          mensagem: erro.response ? (dados?.mensagem || 'O servidor recusou os dados.') : mensagemDeErro(erro),
+          erros: [
+            ...(dados?.erros || []).map(item => ({
+              linha: linhas[item.indice]?.id ?? null,
+              campo: item.campo,
+              erro: item.erro,
+            })),
+            /* Formato dos outros endpoints ({ campos: { campo: motivo } }), por garantia. */
+            ...Object.entries(dados?.campos || {}).map(([campo, motivo]) => ({ linha: null, campo, erro: motivo })),
+          ],
+        }
+        return false
       }
     },
 

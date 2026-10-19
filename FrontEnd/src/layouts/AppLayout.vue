@@ -3,8 +3,21 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Sidebar from '../components/Sidebar.vue'
 import Topbar from '../components/Topbar.vue'
+import { useAuthStore } from '../stores/auth.js'
 
 const route = useRoute()
+const auth = useAuthStore()
+
+/*
+  Ao entrar no painel, confirma a sessao com o servidor (GET /auth/me).
+
+  O guarda de rotas so olha se existe um token no localStorage — e ele
+  sobrevive a tudo: pode ter vencido, a conta pode ter sido excluida ou o
+  perfil rebaixado com a aba fechada. Esta chamada e quem descobre isso.
+  Nao tratamos o erro aqui porque nao ha o que fazer com ele na tela: o
+  interceptor do api.js ja limpa a sessao e volta para o login no 401.
+*/
+onMounted(() => { auth.revalidar().catch(() => {}) })
 
 /*
   Onde o navegador suporta View Transitions, quem anima a troca de tela é ele

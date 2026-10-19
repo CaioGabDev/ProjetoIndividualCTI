@@ -23,6 +23,10 @@ onMounted(async () => {
 const arrastando = ref(false)
 const inputArquivo = ref(null)
 
+/* Desligado = fluxo normal (só o que o Pinia aprovou). Ligado = teste do back. */
+const incluirLinhasComErro = ref(false)
+const LIMITE_VALIDADOS_PREVIA = 10
+
 const LIMITE_PREVIA = 50       // a tabela mostra só o começo; o total vem dos getters
 const LIMITE_ERROS_PREVIA = 30 // aqui só cabe uma amostra: a lista inteira está no relatório
 
@@ -200,6 +204,83 @@ async function processar() {
             Ver relatório completo
             <AppIcon name="chevronRight" class="h-3 w-3" />
           </router-link>
+        </div>
+
+        <!-- ============ SEGUNDA VALIDAÇÃO: SPRING BOOT ============ -->
+        <div v-if="upload.temRelatorio" class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 animate-surgir">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-medium text-zinc-100">Validação no servidor</h2>
+              <p class="mt-0.5 text-[11px] text-zinc-500">
+                O Pinia aprovou {{ upload.registrosAprovados.length }} de {{ upload.totalRegistros }} linhas.
+                O Spring Boot confere tudo de novo antes de seguir.
+              </p>
+            </div>
+
+            <button
+              :disabled="upload.servidor.status === 'enviando'"
+              class="flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-400 disabled:opacity-60"
+              @click="upload.validarNoServidor({ incluirLinhasComErro })">
+              <AppIcon name="shield" class="h-3.5 w-3.5" />
+              {{ upload.servidor.status === 'enviando' ? 'Validando...' : 'Validar no servidor' }}
+            </button>
+          </div>
+
+          <label class="mt-3 flex w-fit cursor-pointer items-center gap-2 text-[11px] text-zinc-400">
+            <input v-model="incluirLinhasComErro" type="checkbox" class="accent-emerald-500" />
+            Enviar também as linhas com erro (teste: ver o back recusar)
+          </label>
+
+          <!-- Back aprovou: mostra a lista já padronizada que voltou -->
+          <div v-if="upload.servidor.status === 'ok'" class="mt-4">
+            <p class="flex items-center gap-2 text-[11px] text-emerald-400">
+              <AppIcon name="check" class="h-3.5 w-3.5" />
+              {{ upload.servidor.validados.length }} clientes validados e padronizados pelo servidor.
+            </p>
+
+            <div class="mt-3 overflow-x-auto">
+              <table class="w-full text-left">
+                <thead>
+                  <tr class="text-[10px] uppercase tracking-wide text-zinc-600">
+                    <th class="font-normal pb-2 pr-3">Código</th>
+                    <th class="font-normal pb-2 pr-3">Cliente</th>
+                    <th class="font-normal pb-2 pr-3">Consultor</th>
+                    <th class="font-normal pb-2 pr-3">Segmento</th>
+                    <th class="font-normal pb-2 pr-3">Contratação</th>
+                    <th class="font-normal pb-2">UF</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="cliente in upload.servidor.validados.slice(0, LIMITE_VALIDADOS_PREVIA)"
+                    :key="cliente.codigoCliente"
+                    class="border-t border-zinc-800 text-xs">
+                    <td class="py-2 pr-3 font-mono text-zinc-400">{{ cliente.codigoCliente }}</td>
+                    <td class="py-2 pr-3 text-zinc-200">{{ cliente.nomeCliente }}</td>
+                    <td class="py-2 pr-3 text-zinc-400">{{ cliente.consultor }}</td>
+                    <td class="py-2 pr-3 text-zinc-400">{{ cliente.segmento }}</td>
+                    <td class="py-2 pr-3 font-mono text-zinc-400">{{ cliente.dataContratacao }}</td>
+                    <td class="py-2 text-zinc-400">{{ cliente.uf || '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Back recusou: mostra a frase geral e, se houver, o erro de cada linha -->
+          <div v-else-if="upload.servidor.status === 'erro'" class="mt-4 rounded-lg border border-red-500/30 bg-red-500/5 p-3">
+            <p class="flex items-center gap-2 text-[11px] font-medium text-red-400">
+              <AppIcon name="alert" class="h-3.5 w-3.5 shrink-0" />
+              {{ upload.servidor.mensagem }}
+            </p>
+            <ul v-if="upload.servidor.erros.length" class="mt-2 max-h-40 space-y-1 overflow-y-auto">
+              <li v-for="(item, i) in upload.servidor.erros" :key="i" class="text-[11px] leading-relaxed text-red-300/80">
+                <span v-if="item.linha" class="font-mono text-red-400/60">L{{ item.linha }}</span>
+                <span v-if="item.campo" class="text-red-400/60">{{ item.campo }} ·</span>
+                {{ item.erro }}
+              </li>
+            </ul>
+          </div>
         </div>
 
         <!-- ============ PRÉVIA DOS DADOS TRATADOS ============ -->

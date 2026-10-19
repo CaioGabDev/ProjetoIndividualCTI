@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 import { createRouter, createWebHistory } from 'vue-router'
-import { estaLogado } from '../services/auth.js'
+import { useAuthStore } from '../stores/auth.js'
 import { deveAnimar } from '../services/preferencias.js'
 
 // Layout do painel interno (sidebar + topbar)
@@ -9,6 +9,7 @@ import AppLayout from '../layouts/AppLayout.vue'
 // Páginas públicas
 import Home from '../views/Home.vue'
 import Login from '../views/Login.vue'
+import Registrar from '../views/Registrar.vue'
 
 /*
   As páginas internas usam import dinâmico: só são baixadas quando
@@ -18,6 +19,7 @@ const routes = [
   // ---------- Público ----------
   { path: '/', name: 'Home', component: Home, meta: { titulo: 'Âncora — Insights Comerciais' } },
   { path: '/login', name: 'Login', component: Login, meta: { titulo: 'Entrar · Âncora', somenteVisitante: true } },
+  { path: '/cadastro', name: 'Registrar', component: Registrar, meta: { titulo: 'Criar conta · Âncora', somenteVisitante: true } },
 
   // ---------- Painel interno ----------
   {
@@ -50,11 +52,16 @@ const router = createRouter({
   - quem já está logado não precisa ver o /login de novo
 */
 router.beforeEach((to) => {
-  if (to.matched.some(r => r.meta.exigeLogin) && !estaLogado()) {
+  /* A store e lida dentro do guarda, nao no topo do arquivo: o Pinia so
+     existe depois do .use(createPinia()) em main.js, e este arquivo e
+     importado antes disso. */
+  const auth = useAuthStore()
+
+  if (to.matched.some(r => r.meta.exigeLogin) && !auth.logado) {
     return { name: 'Login', query: { redirect: to.fullPath } }
   }
 
-  if (to.meta.somenteVisitante && estaLogado()) {
+  if (to.meta.somenteVisitante && auth.logado) {
     return { name: 'Dashboard' }
   }
 

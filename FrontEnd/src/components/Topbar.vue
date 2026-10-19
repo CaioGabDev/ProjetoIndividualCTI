@@ -2,7 +2,9 @@
 import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
-import { usuarioAtual } from '../services/auth.js'
+import { useAuthStore } from '../stores/auth.js'
+
+const auth = useAuthStore()
 
 defineEmits(['abrir-menu'])
 
@@ -65,8 +67,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', atalho))
 
       <div
         class="w-7 h-7 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-[10px] font-medium text-emerald-400"
-        :title="usuarioAtual.nome">
-        {{ usuarioAtual.iniciais }}
+        :title="auth.nome">
+        {{ auth.iniciais }}
       </div>
     </div>
   </header>

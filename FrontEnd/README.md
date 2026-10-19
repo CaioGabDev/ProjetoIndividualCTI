@@ -113,16 +113,17 @@ src/
 ├── router/
 │   └── index.js         # definição das rotas
 ├── stores/
+│   ├── auth.js          # sessão do usuário: token JWT e perfil (Pinia)
 │   └── uploadStore.js   # estado global do upload (Pinia)
 ├── views/
 │   ├── Home.vue
 │   ├── Login.vue
+│   ├── Registrar.vue
 │   ├── Dashboard.vue
 │   ├── Clientes.vue
 │   └── Upload.vue
 ├── services/
-│   ├── api.js            # (futuro) cliente Axios para a API Spring Boot
-│   ├── auth.js           # sessão do usuário (hoje em localStorage)
+│   ├── api.js            # cliente Axios + interceptors (token e 401)
 │   └── exportar.js       # geração dos arquivos .xlsx (SheetJS)
 ├── App.vue
 ├── main.js
@@ -222,9 +223,9 @@ npm run preview
 - [x] Sparkline de tendência nos cartões de indicador
 - [x] Esqueleto de carregamento e progresso real na leitura da planilha
 - [x] Preferência de movimento (seguir o sistema / ligada / desligada)
-- [ ] Integração com API Spring Boot
+- [x] Integração com a API Spring Boot (login, cadastro e perfil; dashboards ainda em mock)
 - [ ] Persistência em PostgreSQL
-- [ ] Autenticação real (JWT / sessão)
+- [x] Autenticação real com JWT (Axios + interceptors, store Pinia, guarda de rotas)
 - [ ] Geração de insights via Python
 
 ---
