@@ -2,6 +2,8 @@ package com.example.Backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,9 +20,12 @@ public class Servico {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "O nome do servico e obrigatorio")
+    @Size(max = 150, message = "O nome deve ter no maximo 150 caracteres")
     @Column(nullable = false, length = 150)
     private String nome;
 
+    @Size(max = 100, message = "A categoria deve ter no maximo 100 caracteres")
     @Column(length = 100)
     private String categoria;
 

@@ -1,0 +1,34 @@
+codigo_cliente,nome_cliente,consultor,segmento,nivel_cliente,faturamento_anual,servicos_contratados,data_contratacao,cidade,uf
+CTI001,Metalúrgica Horizonte,Ana Souza,IND.,A,1850000,Internet Dedicada;Firewall,2025-01-15,Campinas,SP
+CTI002,Mercado Central,carlos lima,Comercio,B,420000,Backup;Firewall,2025-01-30,Hortolândia,SP
+CTI003,Clínica Vida,ANA SOUZA,saude,B,380000,Backup,15/02/2025,Valinhos,SP
+CTI004,Escola Saber,Bruno Alves,Edu,C,95000,Link Empresarial,2025-02-20,Sumaré,SP
+CTI005,TecSoft Sistemas,bruno alves,TI,A,"R$ 2.300.000,00",Cloud;Backup;Firewall;MPLS,2025-03-03,Campinas,SP
+CTI006,Padaria Pão Quente,Carla Mendes,Comércio,C,120000,Internet Dedicada,2025-03-10,Paulínia,SP
+CTI007,Auto Peças Rocha,Carlos Lima,comercio,b,510000,Link Empresarial;Backup,12/03/2025,Americana,sp
+CTI008,Indústria Química Sul,Ana Souza,Industria,A,3100000,Internet Dedicada;MPLS;Firewall;Cloud,2025-04-01,Jundiaí,SP
+CTI009,Consultoria Prisma,Carla Mendes,Serviços,B,640000,Cloud;Backup,2025-04-18,Campinas,SP
+CTI010,Laboratório Bio,Bruno Alves,Saúde,A,1450000,Internet Dedicada;Backup;Firewall,2025-05-06,Indaiatuba,SP
+CTI011,Colégio Futuro,carla mendes,educacao,B,310000,Link Empresarial;Firewall,2025-05-22,Campinas,SP
+CTI012,Transportes Veloz,Carlos Lima,serv,B,720000,MPLS;Link Empresarial,2025-06-02,Hortolândia,SP
+CTI013,Loja da Esquina,Carla Mendes,COM,C,80000,Backup,2025-06-15,Sumaré,SP
+CTI014,Fundição Ferro Forte,Ana Souza,Industrial,A,2750000,Internet Dedicada;MPLS;Cloud,2025-07-01,Limeira,SP
+CTI015,Data Center Norte,Bruno Alves,Tecnologia,A,15000000,Internet Dedicada;MPLS;Cloud;Firewall;Backup,2025-07-20,Campinas,SP
+CTI016,Ótica Visão,Carlos Lima,Comércio,C,150000,Link Empresarial,2025-08-05,Valinhos,SP
+CTI017,Hospital São Lucas,Ana Souza,saúde,A,1980000,Internet Dedicada;Firewall;Backup,2025-08-19,Campinas,SP
+CTI018,Escritório Contábil Exato,Carla Mendes,Serviços,C,210000,Backup;Cloud,2025-09-02,Americana,SP
+CTI019,Gráfica Rápida,Carlos Lima,Ind,B,560000,Link Empresarial;Firewall,2025-09-16,Sumaré,SP
+CTI020,Faculdade Nova Era,Bruno Alves,Educação,B,890000,Internet Dedicada;Cloud,2025-10-01,Campinas,SP
+CTI021,Supermercado Bom Preço,Carlos Lima,Comercio,B,980000,Internet Dedicada;Backup;Firewall,2025-10-14,Paulínia,SP
+CTI022,Startup Nuvem,Bruno Alves,tec,C,240000,Cloud,2025-11-03,Campinas,SP
+CTI023,Usinagem Precisa,"  ana   souza ",IND.,B,830000,MPLS;Firewall,2025-11-20,Indaiatuba,SP
+CTI024,Farmácia Saúde Já,Carla Mendes,Saude,C,175000,Backup,2025-11-28,Sumaré,SP
+CTI025,Logística Express,Carlos Lima,Serviços,A,1620000,MPLS;Link Empresarial;Cloud,2026-01-12,Jundiaí,SP
+CTI026,Cursinho Aprovação,Carla Mendes,EDU,C,60000,Link Empresarial,2026-01-27,Valinhos,SP
+CTI027,Software House Código,Bruno Alves,TI,B,700000,Cloud;Firewall,2026-02-10,Campinas,SP
+CTI028,Plásticos Moldar,Ana Souza,Indústria,B,"940.000",Internet Dedicada;MPLS,2026-03-02,Americana,SP
+CTI029,Clínica Sorriso,Carla Mendes,saude,C,130000,Backup;Link Empresarial,2026-03-25,Hortolândia,SP
+CTI030,Atacado Real,Carlos Lima,Comércio,A,1300000,Internet Dedicada;Firewall;Backup,2026-04-07,Campinas,SP
+CTI031,Fazenda Boa Terra,Ana Souza,Agro,B,450000,Internet Dedicada,2026-04-15,Mogi Mirim,SP
+CTI005,TecSoft Sistemas (repetida),Bruno Alves,TI,A,2300000,Cloud,2025-03-03,Campinas,SP
+CTI032,Loja Teste,,Comércio,D,-5000,Backup,31/02/2026,Campinas,SP

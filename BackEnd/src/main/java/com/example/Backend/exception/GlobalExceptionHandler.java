@@ -5,12 +5,18 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.FieldError;
+import org.springframework.validation.method.ParameterErrors;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,6 +40,60 @@ public class GlobalExceptionHandler {
         corpo.put("mensagem", "Dados invalidos");
         corpo.put("campos", campos);
         return ResponseEntity.badRequest().body(corpo);
+    }
+
+    /**
+     * 400: algum item de uma LISTA reprovou (POST /api/clientes/validar).
+     *
+     * Com List<@Valid ClienteDTO> o Spring valida pelo "method validation" e
+     * lanca esta excecao em vez da MethodArgumentNotValidException acima.
+     * Devolvemos todos os erros, cada um com o indice do item na lista (0 = o
+     * primeiro), para o front apontar a linha certa da planilha. "campo" e
+     * "erro" repetem o primeiro problema, para quem so quer uma frase.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ResponseEntity<Map<String, Object>> validacaoDeLista(HandlerMethodValidationException ex) {
+        List<Map<String, Object>> erros = new ArrayList<>();
+
+        for (ParameterErrors item : ex.getBeanResults()) {
+            for (FieldError f : item.getFieldErrors()) {
+                Map<String, Object> erro = new LinkedHashMap<>();
+                erro.put("indice", item.getContainerIndex());
+                erro.put("campo", f.getField());
+                erro.put("erro", f.getDefaultMessage());
+                erros.add(erro);
+            }
+        }
+
+        // Item null na lista ([null]) nao tem campo: cai aqui, em valueResults.
+        ex.getValueResults().forEach(item -> item.getResolvableErrors().forEach(e -> {
+            Map<String, Object> erro = new LinkedHashMap<>();
+            erro.put("indice", item.getContainerIndex());
+            erro.put("campo", "");
+            erro.put("erro", "Item vazio na lista");
+            erros.add(erro);
+        }));
+
+        Map<String, Object> corpo = new LinkedHashMap<>();
+        corpo.put("mensagem", "Dados invalidos");
+        if (!erros.isEmpty()) {
+            corpo.put("campo", erros.get(0).get("campo"));
+            corpo.put("erro", erros.get(0).get("erro"));
+        }
+        corpo.put("erros", erros);
+        return ResponseEntity.badRequest().body(corpo);
+    }
+
+    /**
+     * 400: o JSON nem chegou a virar objeto — texto em campo numerico
+     * ("faturamentoAnual": "abc"), data fora do formato ou impossivel
+     * ("2025-02-30"), virgula sobrando. Sem isto o Spring devolveria um 400
+     * sem a chave "mensagem" que o front espera.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, String>> jsonIlegivel() {
+        return ResponseEntity.badRequest().body(Map.of("mensagem",
+                "JSON invalido: confira numeros e datas (formato aaaa-mm-dd)."));
     }
 
     /**

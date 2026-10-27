@@ -1,0 +1,9 @@
+numpy>=1.26             # contas: média, mediana, desvio, quartis (aula)
+scipy>=1.13             # estatística: Z-score e correlação (aula)
+pandas>=2.2             # lê o .csv no estudo.py (aula)
+matplotlib>=3.8         # gráficos do estudo.py (aula)
+SQLAlchemy>=2.0         # conversa com o banco (banco.py)
+psycopg[binary]>=3.2    # driver do PostgreSQL
+python-dotenv>=1.0      # lê o arquivo .env
+fastapi>=0.115          # cria a API (api.py)
+uvicorn>=0.30           # servidor que mantém a API ligada

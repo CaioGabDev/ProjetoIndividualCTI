@@ -1,6 +1,8 @@
 package com.example.Backend.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 
@@ -17,12 +19,16 @@ public class Telemetria {
     private Long id;
 
     /** Ex.: UPLOAD, LOGIN, PYTHON, API. */
+    @NotBlank(message = "O nome do evento e obrigatorio")
+    @Size(max = 50, message = "O evento deve ter no maximo 50 caracteres")
     @Column(nullable = false, length = 50)
     private String evento;
 
+    @Size(max = 100, message = "A origem deve ter no maximo 100 caracteres")
     @Column(length = 100)
     private String origem;
 
+    @Size(max = 500, message = "A mensagem deve ter no maximo 500 caracteres")
     @Column(length = 500)
     private String mensagem;
 

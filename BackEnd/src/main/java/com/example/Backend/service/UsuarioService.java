@@ -1,5 +1,9 @@
 package com.example.Backend.service;
 
+import com.example.Backend.dto.AtualizarUsuarioDTO;
+import com.example.Backend.dto.CadastroDTO;
+import com.example.Backend.exception.EmailJaCadastradoException;
+import com.example.Backend.model.Perfil;
 import com.example.Backend.model.Usuario;
 import com.example.Backend.repository.UsuarioRepository;
 import org.springframework.http.HttpStatus;
@@ -10,9 +14,11 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
-/** Regras do CRUD de Usuario (quem acessa o painel). */
+/** Regras do cadastro e do CRUD de Usuario (quem acessa o painel). */
 @Service
 public class UsuarioService {
+
+    private static final String CARGO_PADRAO = "Gestor comercial";
 
     private final UsuarioRepository repository;
     private final PasswordEncoder encoder;
@@ -33,31 +39,56 @@ public class UsuarioService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario " + id + " nao encontrado(a)."));
     }
 
-    @Transactional
-    public Usuario criar(Usuario novo) {
-        novo.setId(null);
-        novo.setEmail(novo.getEmail().trim().toLowerCase());
-        validarEmail(novo.getEmail(), null);
-        validarSenha(novo.getSenha());
+    @Transactional(readOnly = true)
+    public Usuario buscarPorEmail(String email) {
+        return repository.findByEmailIgnoreCase(normalizar(email))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario nao encontrado."));
+    }
 
-        // A senha nunca e gravada em texto puro.
-        novo.setSenha(encoder.encode(novo.getSenha()));
-        return repository.save(novo);
+    /**
+     * Cria a conta a partir do formulario de cadastro.
+     *
+     * O primeiro usuario do sistema vira ADMIN: alguem precisa poder
+     * administrar contas, e nao ha como pedir permissao a um admin que ainda
+     * nao existe. Do segundo em diante, todo mundo entra como USER.
+     */
+    @Transactional
+    public Usuario cadastrar(CadastroDTO dto) {
+        String email = normalizar(dto.email());
+        if (repository.existsByEmailIgnoreCase(email)) {
+            throw new EmailJaCadastradoException(email);
+        }
+
+        Perfil perfil = repository.count() == 0 ? Perfil.ADMIN : Perfil.USER;
+
+        // A senha nunca e gravada em texto puro: o encode gera o hash BCrypt.
+        return repository.save(new Usuario(
+                dto.nome().trim(),
+                email,
+                cargoOuPadrao(dto.cargo()),
+                encoder.encode(dto.senha()),
+                perfil));
     }
 
     @Transactional
-    public Usuario atualizar(Long id, Usuario dados) {
+    public Usuario atualizar(Long id, AtualizarUsuarioDTO dto) {
         Usuario atual = buscar(id);
-        String email = dados.getEmail().trim().toLowerCase();
-        validarEmail(email, id);
+        String email = normalizar(dto.email());
 
-        atual.setNome(dados.getNome());
+        // So reclama se o e-mail pertencer a OUTRA pessoa (manter o proprio e valido).
+        repository.findByEmailIgnoreCase(email)
+                .filter(outro -> !outro.getId().equals(id))
+                .ifPresent(outro -> {
+                    throw new EmailJaCadastradoException(email);
+                });
+
+        atual.setNome(dto.nome().trim());
         atual.setEmail(email);
-        atual.setCargo(dados.getCargo());
+        atual.setCargo(cargoOuPadrao(dto.cargo()));
 
         // Senha em branco no PUT significa "mantem a atual".
-        if (dados.getSenha() != null && !dados.getSenha().isBlank()) {
-            atual.setSenha(encoder.encode(dados.getSenha()));
+        if (dto.senha() != null && !dto.senha().isBlank()) {
+            atual.setSenha(encoder.encode(dto.senha()));
         }
 
         return repository.save(atual);
@@ -65,25 +96,23 @@ public class UsuarioService {
 
     @Transactional
     public void excluir(Long id) {
-        repository.delete(buscar(id));
+        Usuario alvo = buscar(id);
+
+        // Trava de seguranca: sem nenhum ADMIN ninguem mais administra contas.
+        if (alvo.getPerfil() == Perfil.ADMIN && repository.countByPerfil(Perfil.ADMIN) <= 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Este e o unico administrador: promova outro antes de excluir.");
+        }
+
+        repository.delete(alvo);
     }
 
-    /** Na criacao a senha e obrigatoria (no PUT ela pode vir vazia). */
-    private void validarSenha(String senha) {
-        if (senha == null || senha.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A senha e obrigatoria.");
-        }
-        if (senha.length() < 6) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A senha deve ter ao menos 6 caracteres.");
-        }
+    /** E-mail e identificacao: guardar sempre igual evita duplicata por maiuscula ou espaco. */
+    private String normalizar(String email) {
+        return email == null ? "" : email.trim().toLowerCase();
     }
 
-    /** O e-mail e a identificacao do usuario, entao nao pode repetir. */
-    private void validarEmail(String email, Long idIgnorado) {
-        repository.findByEmailIgnoreCase(email)
-                .filter(u -> !u.getId().equals(idIgnorado))
-                .ifPresent(u -> {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ja existe um usuario com o e-mail " + email + ".");
-                });
+    private String cargoOuPadrao(String cargo) {
+        return (cargo == null || cargo.isBlank()) ? CARGO_PADRAO : cargo.trim();
     }
 }

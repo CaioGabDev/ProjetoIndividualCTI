@@ -27,7 +27,7 @@ public record AtualizarUsuarioDTO(
         String cargo,
 
         // O "|^$" no fim do padrao e o que permite mandar a senha em branco.
-        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\d).{8,72}$|^$",
+        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,72}$|^$",
                  message = "A senha deve ter de 8 a 72 caracteres, com letras e numeros")
         String senha) {
 }

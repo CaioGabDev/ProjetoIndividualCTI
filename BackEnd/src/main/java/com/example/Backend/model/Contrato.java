@@ -2,6 +2,8 @@ package com.example.Backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -20,15 +22,18 @@ public class Contrato {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotNull(message = "A data de inicio e obrigatoria")
     @Column(name = "data_inicio", nullable = false)
     private LocalDate dataInicio;
 
     @Column(name = "data_fim")
     private LocalDate dataFim;
 
+    @PositiveOrZero(message = "O valor do contrato nao pode ser negativo")
     @Column(precision = 12, scale = 2)
     private BigDecimal valor;
 
+    @NotNull(message = "Informe se o contrato esta ativo")
     @Column(nullable = false)
     private Boolean ativo = Boolean.TRUE;
 

@@ -30,7 +30,7 @@ public record CadastroDTO(
         // O teto de 72 nao e capricho: o BCrypt so considera os 72 primeiros
         // bytes da senha, entao aceitar mais do que isso daria falsa seguranca.
         @NotBlank(message = "A senha e obrigatoria")
-        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\d).{8,72}$",
+        @Pattern(regexp = "^(?=.*[A-Za-z])(?=.*\\d).{8,72}$",
                  message = "A senha deve ter de 8 a 72 caracteres, com letras e numeros")
         String senha) {
 }

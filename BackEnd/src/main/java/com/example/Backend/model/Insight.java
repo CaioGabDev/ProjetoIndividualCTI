@@ -1,6 +1,8 @@
 package com.example.Backend.model;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 import java.time.LocalDateTime;
 
@@ -16,9 +18,12 @@ public class Insight {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "O tipo do insight e obrigatorio")
+    @Size(max = 100, message = "O tipo deve ter no maximo 100 caracteres")
     @Column(nullable = false, length = 100)
     private String tipo;
 
+    @Size(max = 500, message = "A descricao deve ter no maximo 500 caracteres")
     @Column(length = 500)
     private String descricao;
 

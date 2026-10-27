@@ -2,7 +2,13 @@ package com.example.Backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,17 +24,37 @@ public class Cliente {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @NotBlank(message = "O nome do cliente e obrigatorio")
+    @Size(max = 150, message = "O nome deve ter no maximo 150 caracteres")
     @Column(nullable = false, length = 150)
     private String nome;
 
+    @Email(message = "E-mail invalido")
+    @Size(max = 255)
     @Column(length = 255)
     private String email;
 
+    @Size(max = 100)
     @Column(length = 100)
     private String segmento;
 
+    @Size(max = 100)
     @Column(length = 100)
     private String cidade;
+
+    /** Vem da planilha tratada no front. Guardado so com digitos. */
+    @Size(max = 18, message = "O CNPJ deve ter no maximo 18 caracteres")
+    @Column(length = 18)
+    private String cnpj;
+
+    /** Classificacao da carteira: A, B ou C. Aceita minusculo; o service padroniza. */
+    @Pattern(regexp = "^[ABCabc]?$", message = "O nivel deve ser A, B ou C")
+    @Column(length = 1)
+    private String nivel;
+
+    @PositiveOrZero(message = "O faturamento nao pode ser negativo")
+    @Column(precision = 14, scale = 2)
+    private BigDecimal faturamento;
 
     @ManyToOne
     @JoinColumn(name = "consultor_id")
@@ -83,6 +109,30 @@ public class Cliente {
 
     public void setCidade(String cidade) {
         this.cidade = cidade;
+    }
+
+    public String getCnpj() {
+        return cnpj;
+    }
+
+    public void setCnpj(String cnpj) {
+        this.cnpj = cnpj;
+    }
+
+    public String getNivel() {
+        return nivel;
+    }
+
+    public void setNivel(String nivel) {
+        this.nivel = nivel;
+    }
+
+    public BigDecimal getFaturamento() {
+        return faturamento;
+    }
+
+    public void setFaturamento(BigDecimal faturamento) {
+        this.faturamento = faturamento;
     }
 
     public Consultor getConsultor() {
