@@ -1,15 +1,19 @@
 package com.example.Backend.controller;
 
+import com.example.Backend.dto.ClienteResumoDTO;
 import com.example.Backend.model.Cliente;
 import com.example.Backend.service.ClienteService;
-import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.net.URI;
 import java.util.List;
 
-/** CRUD de Cliente em /api/clientes. */
+/**
+ * Carteira de clientes em /api/clientes.
+ *
+ * Os clientes entram pelo envio de planilha (POST /api/upload -> ETL em Python),
+ * por isso aqui nao ha POST/PUT: a tela so consulta e remove.
+ */
 @RestController
 @RequestMapping("/api/clientes")
 public class ClienteController {
@@ -20,29 +24,16 @@ public class ClienteController {
         this.service = service;
     }
 
-    /** 200 com a lista completa. */
+    /** 200 com os clientes da base atual (ultimo lote processado). */
     @GetMapping
-    public List<Cliente> listar() {
-        return service.listar();
+    public List<ClienteResumoDTO> listar() {
+        return service.listarBaseAtual();
     }
 
     /** 200 com o registro, ou 404 se o id nao existir. */
     @GetMapping("/{id}")
     public Cliente buscar(@PathVariable Long id) {
         return service.buscar(id);
-    }
-
-    /** 201 com o header Location apontando para o novo registro. */
-    @PostMapping
-    public ResponseEntity<Cliente> criar(@RequestBody @Valid Cliente corpo) {
-        Cliente salvo = service.criar(corpo);
-        return ResponseEntity.created(URI.create("/api/clientes/" + salvo.getId())).body(salvo);
-    }
-
-    /** 200 com o registro atualizado. */
-    @PutMapping("/{id}")
-    public Cliente atualizar(@PathVariable Long id, @RequestBody @Valid Cliente corpo) {
-        return service.atualizar(id, corpo);
     }
 
     /** 204 sem corpo. */

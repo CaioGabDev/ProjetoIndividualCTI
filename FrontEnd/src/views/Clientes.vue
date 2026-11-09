@@ -3,7 +3,8 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import Esqueleto from '../components/Esqueleto.vue'
-import { carregarClientes, estiloNivel, formatarReal } from '../data/mock.js'
+import { api, mensagemDeErro } from '../services/api.js'
+import { estiloNivel, formatarReal } from '../services/formatar.js'
 
 const route = useRoute()
 
@@ -18,15 +19,48 @@ function nivelDaUrl(valor) {
   return niveis.includes(valor) ? valor : 'todos'
 }
 
-/* A carteira chega por uma função assíncrona; até lá, a tabela mostra o esqueleto. */
+/*
+  A carteira vem do GET /api/clientes: os clientes do último lote que o
+  Python processou (a mesma base do dashboard). Até chegar, a tabela mostra
+  o esqueleto.
+*/
 const lista = ref([])
 const carregando = ref(true)
+const erro = ref('')
+const erroRemocao = ref('')
+const removendo = ref(null)
 
-onMounted(async () => {
-  const dados = await carregarClientes()
-  lista.value = [...dados.clientes]
-  carregando.value = false
-})
+/* Formato da API -> formato da tela (servicos vira texto para busca e exibição). */
+function paraLinha(c) {
+  const servicos = c.servicos || []
+  return {
+    id: c.id,
+    codigo: c.codigo || '',
+    nome: c.nome || '',
+    consultor: c.consultor || '',
+    segmento: c.segmento || '',
+    nivel: c.nivel || '',
+    servicos,
+    servico: servicos.join(', '),
+    faturamento: Number(c.faturamento || 0),
+    cidade: c.cidade || '',
+    uf: c.uf || '',
+  }
+}
+
+async function carregar() {
+  carregando.value = true
+  erro.value = ''
+  try {
+    lista.value = (await api.listarClientes()).map(paraLinha)
+  } catch (e) {
+    erro.value = mensagemDeErro(e, 'Não foi possível carregar a carteira.')
+  } finally {
+    carregando.value = false
+  }
+}
+
+onMounted(carregar)
 const filtroNivel = ref(nivelDaUrl(route.query.nivel))    // 'todos' | 'A' | 'B' | 'C'
 const filtroSegmento = ref(route.query.segmento || '')    // vazio = todos os segmentos
 const busca = ref(route.query.q || '')                    // vem da busca da topbar
@@ -58,7 +92,9 @@ const filtrados = computed(() => {
       || cliente.nome.toLowerCase().includes(termo)
       || cliente.segmento.toLowerCase().includes(termo)
       || cliente.servico.toLowerCase().includes(termo)
-      || cliente.cnpj.includes(termo)
+      || cliente.consultor.toLowerCase().includes(termo)
+      || cliente.cidade.toLowerCase().includes(termo)
+      || cliente.codigo.toLowerCase().includes(termo)
     return passaNivel && passaSegmento && passaBusca
   })
 })
@@ -92,10 +128,20 @@ function iniciais(nome) {
   return partes.slice(0, 2).map(parte => parte[0]).join('').toUpperCase()
 }
 
-function remover(cliente) {
-  lista.value = lista.value.filter(c => c.id !== cliente.id)
-  confirmandoRemocao.value = null
-  if (pagina.value > totalPaginas.value) pagina.value = totalPaginas.value
+/* DELETE /api/clientes/{id}: só tira da tela depois que o servidor confirmou. */
+async function remover(cliente) {
+  removendo.value = cliente.id
+  erroRemocao.value = ''
+  try {
+    await api.removerCliente(cliente.id)
+    lista.value = lista.value.filter(c => c.id !== cliente.id)
+    confirmandoRemocao.value = null
+    if (pagina.value > totalPaginas.value) pagina.value = totalPaginas.value
+  } catch (e) {
+    erroRemocao.value = mensagemDeErro(e, 'Não foi possível remover o cliente.')
+  } finally {
+    removendo.value = null
+  }
 }
 
 const exportando = ref(false)
@@ -153,10 +199,13 @@ function limparFiltros() {
           <span class="font-mono text-zinc-500">{{ filtrados.length }}</span>
         </button>
 
-        <button class="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-400">
+        <!-- Clientes entram pela planilha: o botão leva para o envio -->
+        <router-link
+          :to="{ name: 'Upload' }"
+          class="flex items-center gap-2 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-400">
           <AppIcon name="plus" class="w-3.5 h-3.5" />
-          Novo cliente
-        </button>
+          Enviar planilha
+        </router-link>
       </div>
     </div>
 
@@ -200,6 +249,21 @@ function limparFiltros() {
       </span>
     </div>
 
+    <!-- ============ ERROS ============ -->
+    <div v-if="erro" class="rounded-xl border border-red-500/30 bg-red-500/5 p-4">
+      <p class="flex items-center gap-2 text-xs text-red-400">
+        <AppIcon name="alert" class="h-3.5 w-3.5 shrink-0" />
+        {{ erro }}
+      </p>
+      <button class="mt-2 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300" @click="carregar">
+        Tentar de novo
+      </button>
+    </div>
+    <p v-if="erroRemocao" class="flex items-center gap-2 text-[11px] text-red-400">
+      <AppIcon name="alert" class="h-3.5 w-3.5 shrink-0" />
+      {{ erroRemocao }}
+    </p>
+
     <!-- ============ TABELA ============ -->
     <div class="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
       <div class="overflow-x-auto">
@@ -209,7 +273,7 @@ function limparFiltros() {
               <th scope="col" class="px-5 py-3.5 text-left font-normal">Cliente</th>
               <th scope="col" class="px-5 py-3.5 text-left font-normal">Segmento</th>
               <th scope="col" class="px-5 py-3.5 text-left font-normal">Nível</th>
-              <th scope="col" class="px-5 py-3.5 text-left font-normal">Serviço principal</th>
+              <th scope="col" class="px-5 py-3.5 text-left font-normal">Serviços</th>
               <th scope="col" class="px-5 py-3.5 text-right font-normal">Faturamento</th>
               <th scope="col" class="px-5 py-3.5 text-right font-normal">Ações</th>
             </tr>
@@ -254,7 +318,9 @@ function limparFiltros() {
                   </div>
                   <div class="leading-tight">
                     <p class="text-zinc-200">{{ cliente.nome }}</p>
-                    <p class="font-mono text-[10px] text-zinc-500">CNPJ {{ cliente.cnpj }}</p>
+                    <p class="font-mono text-[10px] text-zinc-500">
+                      {{ cliente.codigo }}<template v-if="cliente.consultor"> · {{ cliente.consultor }}</template>
+                    </p>
                   </div>
                 </div>
               </td>
@@ -276,9 +342,10 @@ function limparFiltros() {
                 <div v-if="confirmandoRemocao === cliente.id" class="flex items-center justify-end gap-2 text-[11px]">
                   <span class="text-zinc-400">Remover da carteira?</span>
                   <button
-                    class="rounded-md bg-red-500/15 px-2 py-1 text-red-400 transition-colors hover:bg-red-500/25"
+                    class="rounded-md bg-red-500/15 px-2 py-1 text-red-400 transition-colors hover:bg-red-500/25 disabled:opacity-60"
+                    :disabled="removendo === cliente.id"
                     @click="remover(cliente)">
-                    Remover
+                    {{ removendo === cliente.id ? 'Removendo...' : 'Remover' }}
                   </button>
                   <button
                     class="rounded-md px-2 py-1 text-zinc-500 transition-colors hover:text-zinc-200"
@@ -311,13 +378,21 @@ function limparFiltros() {
           </TransitionGroup>
 
           <!-- Estado vazio em tbody separado: a tabela pode ter mais de um -->
-          <tbody v-if="!carregando && !visiveis.length">
+          <tbody v-if="!carregando && !erro && !visiveis.length">
             <tr>
               <td colspan="6" class="px-5 py-12 text-center">
-                <p class="text-zinc-400">Nenhum cliente encontrado com esses filtros.</p>
-                <button class="mt-2 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300" @click="limparFiltros">
-                  Limpar filtros
-                </button>
+                <template v-if="lista.length">
+                  <p class="text-zinc-400">Nenhum cliente encontrado com esses filtros.</p>
+                  <button class="mt-2 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300" @click="limparFiltros">
+                    Limpar filtros
+                  </button>
+                </template>
+                <template v-else>
+                  <p class="text-zinc-400">A carteira ainda está vazia.</p>
+                  <router-link :to="{ name: 'Upload' }" class="mt-2 inline-block text-[11px] text-emerald-400 transition-colors hover:text-emerald-300">
+                    Enviar a primeira planilha
+                  </router-link>
+                </template>
               </td>
             </tr>
           </tbody>

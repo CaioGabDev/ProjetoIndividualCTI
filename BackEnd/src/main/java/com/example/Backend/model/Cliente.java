@@ -2,11 +2,8 @@ package com.example.Backend.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.PositiveOrZero;
-import jakarta.validation.constraints.Size;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -14,51 +11,52 @@ import java.util.List;
 
 /**
  * Cliente da carteira — e o centro do dominio do CTI Insights.
- * N Clientes -> 1 Consultor | 1 Cliente -> N Contratos | 1 Cliente -> N Insights.
+ * N Clientes -> 1 Consultor | 1 Cliente -> N Contratos | N Clientes -> 1 Lote.
+ *
+ * Quem grava os clientes e o ETL em Python (analytics-python/banco.py), depois
+ * de limpar a planilha. Por isso a tabela e as colunas seguem o SQL de la:
+ * o Hibernate cria a estrutura, o Python preenche.
  */
 @Entity
-@Table(name = "clientes")
+@Table(name = "cliente")
 public class Cliente {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @NotBlank(message = "O nome do cliente e obrigatorio")
-    @Size(max = 150, message = "O nome deve ter no maximo 150 caracteres")
-    @Column(nullable = false, length = 150)
+    // Reprocessar ou apagar um lote apaga os clientes dele junto (ON DELETE CASCADE).
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "lote_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE)
+    @JsonIgnore
+    private UploadLote lote;
+
+    @Column(name = "codigo_cti", nullable = false, length = 60)
+    private String codigoCti;
+
+    @Column(nullable = false, length = 255)
     private String nome;
-
-    @Email(message = "E-mail invalido")
-    @Size(max = 255)
-    @Column(length = 255)
-    private String email;
-
-    @Size(max = 100)
-    @Column(length = 100)
-    private String segmento;
-
-    @Size(max = 100)
-    @Column(length = 100)
-    private String cidade;
-
-    /** Vem da planilha tratada no front. Guardado so com digitos. */
-    @Size(max = 18, message = "O CNPJ deve ter no maximo 18 caracteres")
-    @Column(length = 18)
-    private String cnpj;
-
-    /** Classificacao da carteira: A, B ou C. Aceita minusculo; o service padroniza. */
-    @Pattern(regexp = "^[ABCabc]?$", message = "O nivel deve ser A, B ou C")
-    @Column(length = 1)
-    private String nivel;
-
-    @PositiveOrZero(message = "O faturamento nao pode ser negativo")
-    @Column(precision = 14, scale = 2)
-    private BigDecimal faturamento;
 
     @ManyToOne
     @JoinColumn(name = "consultor_id")
     private Consultor consultor;
+
+    @Column(length = 40)
+    private String segmento;
+
+    /** Classificacao da carteira: A, B ou C. */
+    @Column(length = 1)
+    private String nivel;
+
+    @Column(name = "faturamento_anual", precision = 14, scale = 2)
+    private BigDecimal faturamentoAnual;
+
+    @Column(length = 120)
+    private String cidade;
+
+    @Column(length = 2)
+    private String uf;
 
     @OneToMany(mappedBy = "cliente")
     @JsonIgnore
@@ -79,83 +77,47 @@ public class Cliente {
         this.id = id;
     }
 
+    public UploadLote getLote() {
+        return lote;
+    }
+
+    public String getCodigoCti() {
+        return codigoCti;
+    }
+
     public String getNome() {
         return nome;
-    }
-
-    public void setNome(String nome) {
-        this.nome = nome;
-    }
-
-    public String getEmail() {
-        return email;
-    }
-
-    public void setEmail(String email) {
-        this.email = email;
-    }
-
-    public String getSegmento() {
-        return segmento;
-    }
-
-    public void setSegmento(String segmento) {
-        this.segmento = segmento;
-    }
-
-    public String getCidade() {
-        return cidade;
-    }
-
-    public void setCidade(String cidade) {
-        this.cidade = cidade;
-    }
-
-    public String getCnpj() {
-        return cnpj;
-    }
-
-    public void setCnpj(String cnpj) {
-        this.cnpj = cnpj;
-    }
-
-    public String getNivel() {
-        return nivel;
-    }
-
-    public void setNivel(String nivel) {
-        this.nivel = nivel;
-    }
-
-    public BigDecimal getFaturamento() {
-        return faturamento;
-    }
-
-    public void setFaturamento(BigDecimal faturamento) {
-        this.faturamento = faturamento;
     }
 
     public Consultor getConsultor() {
         return consultor;
     }
 
-    public void setConsultor(Consultor consultor) {
-        this.consultor = consultor;
+    public String getSegmento() {
+        return segmento;
+    }
+
+    public String getNivel() {
+        return nivel;
+    }
+
+    public BigDecimal getFaturamentoAnual() {
+        return faturamentoAnual;
+    }
+
+    public String getCidade() {
+        return cidade;
+    }
+
+    public String getUf() {
+        return uf;
     }
 
     public List<Contrato> getContratos() {
         return contratos;
     }
 
-    public void setContratos(List<Contrato> contratos) {
-        this.contratos = contratos;
-    }
-
     public List<Insight> getInsights() {
         return insights;
-    }
-
-    public void setInsights(List<Insight> insights) {
-        this.insights = insights;
     }
 }

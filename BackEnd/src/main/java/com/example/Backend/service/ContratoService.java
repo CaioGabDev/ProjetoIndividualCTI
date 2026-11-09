@@ -62,7 +62,7 @@ public class ContratoService {
     public Contrato atualizar(Long id, Contrato dados) {
         Contrato atual = buscar(id);
 
-        atual.setDataInicio(dados.getDataInicio());
+        atual.setDataContratacao(dados.getDataContratacao());
         atual.setDataFim(dados.getDataFim());
         atual.setValor(dados.getValor());
         atual.setAtivo(dados.getAtivo() == null ? Boolean.TRUE : dados.getAtivo());
@@ -109,7 +109,8 @@ public class ContratoService {
 
     private void validarDatas(Contrato contrato) {
         if (contrato.getDataFim() != null
-                && contrato.getDataFim().isBefore(contrato.getDataInicio())) {
+                && contrato.getDataContratacao() != null
+                && contrato.getDataFim().isBefore(contrato.getDataContratacao())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A data de fim nao pode ser anterior a data de inicio.");
         }
     }

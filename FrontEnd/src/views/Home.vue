@@ -1,7 +1,7 @@
 <script setup>
 import { h, computed } from 'vue'
 import MarcaAncora from '../components/MarcaAncora.vue'
-import { indicadores, faturamentoPorSegmento } from '../data/mock.js'
+import { indicadores, faturamentoPorSegmento } from '../data/vitrine.js'
 
 /* ---------------- Ícones dos cartões ---------------- */
 const criarIcone = (d) => () => h(

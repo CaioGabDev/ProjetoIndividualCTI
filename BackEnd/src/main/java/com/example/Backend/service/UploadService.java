@@ -1,156 +1,152 @@
 package com.example.Backend.service;
 
-import com.example.Backend.dto.ClienteUploadDTO;
+import com.example.Backend.dto.ClienteDTO;
+import com.example.Backend.dto.LoteDTO;
 import com.example.Backend.dto.UploadRequest;
-import com.example.Backend.dto.UploadResponse;
-import com.example.Backend.model.Cliente;
-import com.example.Backend.model.Consultor;
-import com.example.Backend.model.Telemetria;
-import com.example.Backend.repository.ClienteRepository;
-import com.example.Backend.repository.ConsultorRepository;
+import com.example.Backend.model.UploadLote;
+import com.example.Backend.repository.UploadLoteRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.ResourceAccessException;
+import org.springframework.web.client.RestClientResponseException;
+import org.springframework.web.server.ResponseStatusException;
 
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 /**
- * Grava no banco a carteira que o front-end ja tratou e validou (POST /api/upload).
+ * Fluxo do POST /api/upload:
  *
- * O trabalho de limpar e padronizar a planilha fica no uploadStore do Vue; aqui
- * so decidimos entre inserir e atualizar, resolvemos o consultor e registramos
- * o evento na Telemetria. Tudo numa unica transacao: se uma linha estourar, o
- * lote inteiro volta atras e o banco nao fica meio gravado.
+ *   1. valida e padroniza de novo as linhas (ClienteValidacaoService);
+ *   2. cria o lote como AGUARDANDO_ETL e ja grava (commit) - o Python le e
+ *      atualiza essa linha por outra conexao, entao ela precisa existir;
+ *   3. chama o Python (EtlClient), que limpa, calcula e grava os clientes;
+ *   4. le o lote de novo para devolver o status que o Python deixou.
+ *
+ * De proposito este metodo NAO e @Transactional: se fosse, o lote do passo 2
+ * so seria gravado no fim, e o Python nao o encontraria.
  */
 @Service
 public class UploadService {
 
-    private final ClienteRepository clienteRepository;
-    private final ConsultorRepository consultorRepository;
-    private final TelemetriaService telemetriaService;
+    private static final Logger log = LoggerFactory.getLogger(UploadService.class);
 
-    public UploadService(ClienteRepository clienteRepository,
-                         ConsultorRepository consultorRepository,
-                         TelemetriaService telemetriaService) {
-        this.clienteRepository = clienteRepository;
-        this.consultorRepository = consultorRepository;
-        this.telemetriaService = telemetriaService;
+    private final ClienteValidacaoService validacao;
+    private final UploadLoteRepository loteRepository;
+    private final EtlClient etl;
+    private final TelemetriaService telemetria;
+
+    public UploadService(ClienteValidacaoService validacao,
+                         UploadLoteRepository loteRepository,
+                         EtlClient etl,
+                         TelemetriaService telemetria) {
+        this.validacao = validacao;
+        this.loteRepository = loteRepository;
+        this.etl = etl;
+        this.telemetria = telemetria;
     }
 
-    @Transactional
-    public UploadResponse gravar(UploadRequest requisicao) {
-        int inseridos = 0;
-        int atualizados = 0;
+    public LoteDTO enviar(UploadRequest pedido, String usuario) {
+        List<ClienteDTO> clientes = validacao.validarEPreparar(pedido.clientes());
+        int recebidas = Math.max(pedido.recebidas(), clientes.size());
 
-        // Cache por nome: a planilha repete o mesmo consultor em dezenas de
-        // linhas e sem isso seria uma consulta ao banco por linha.
-        Map<String, Consultor> consultoresEmCache = new HashMap<>();
-        int consultoresCriados = 0;
+        UploadLote lote = new UploadLote();
+        lote.setArquivo(pedido.arquivo().trim());
+        lote.setLinhasRecebidas(recebidas);
+        lote.setLinhasValidas(clientes.size());
+        lote.setEnviadoPor(usuario);
+        lote.setStatus(UploadLote.AGUARDANDO_ETL);
+        lote.setMensagem("Aguardando o ETL em Python.");
+        Long loteId = loteRepository.save(lote).getId();
 
-        for (ClienteUploadDTO linha : requisicao.clientes()) {
-            String nome = limpar(linha.nome());
-            String cnpj = somenteDigitos(linha.cnpj());
-
-            Optional<Cliente> existente = localizar(cnpj, nome);
-            Cliente cliente = existente.orElseGet(Cliente::new);
-
-            // Campo que nao veio na planilha nao apaga o que ja esta gravado:
-            // uma planilha sem a coluna "email" nao deve zerar os e-mails do banco.
-            cliente.setNome(nome);
-            cliente.setCnpj(ouAtual(cnpj, cliente.getCnpj()));
-            cliente.setEmail(ouAtual(minusculo(linha.email()), cliente.getEmail()));
-            cliente.setSegmento(ouAtual(limpar(linha.segmento()), cliente.getSegmento()));
-            cliente.setCidade(ouAtual(limpar(linha.cidade()), cliente.getCidade()));
-            cliente.setNivel(ouAtual(maiusculo(linha.nivel()), cliente.getNivel()));
-
-            if (linha.faturamento() != null) {
-                cliente.setFaturamento(linha.faturamento());
+        try {
+            etl.processar(loteId, recebidas, paraLinhasDoEtl(clientes));
+        } catch (RestClientResponseException e) {
+            log.warn("ETL respondeu {} para o lote {}: {}", e.getStatusCode(), loteId, e.getResponseBodyAsString());
+            if (e.getStatusCode().value() == 401) {
+                return falhar(loteId, HttpStatus.BAD_GATEWAY,
+                        "O Python recusou a chave do ETL: o ETL_KEY do Java precisa ser igual ao ETL_API_KEY do Python.");
             }
-
-            String nomeConsultor = limpar(linha.consultor());
-            if (nomeConsultor != null) {
-                String chave = nomeConsultor.toLowerCase();
-                Consultor consultor = consultoresEmCache.get(chave);
-
-                if (consultor == null) {
-                    Optional<Consultor> achado =
-                            consultorRepository.findFirstByNomeIgnoreCase(nomeConsultor);
-
-                    if (achado.isPresent()) {
-                        consultor = achado.get();
-                    } else {
-                        // Consultor que aparece na planilha mas nao esta cadastrado.
-                        Consultor novo = new Consultor();
-                        novo.setNome(nomeConsultor);
-                        consultor = consultorRepository.save(novo);
-                        consultoresCriados++;
-                    }
-
-                    consultoresEmCache.put(chave, consultor);
-                }
-
-                cliente.setConsultor(consultor);
-            }
-
-            clienteRepository.save(cliente);
-
-            if (existente.isPresent()) {
-                atualizados++;
-            } else {
-                inseridos++;
-            }
+            // O Python rodou, mas nao conseguiu tratar os dados: o motivo ja esta gravado no lote.
+            return falhar(loteId, HttpStatus.UNPROCESSABLE_CONTENT,
+                    "O Python nao conseguiu processar a planilha.");
+        } catch (ResourceAccessException e) {
+            log.warn("Sem resposta do ETL em {} para o lote {}: {}", etl.getUrl(), loteId, e.getMessage());
+            return falhar(loteId, HttpStatus.SERVICE_UNAVAILABLE,
+                    "Nao foi possivel falar com o servico de analise (Python). Confira o ETL_URL e se o app Python esta ligado.");
         }
 
-        int recebidos = requisicao.clientes().size();
-        String origem = limpar(requisicao.origem());
-        String mensagem = inseridos + " cliente(s) inserido(s) e " + atualizados + " atualizado(s).";
-
-        Telemetria evento = telemetriaService.registrar("UPLOAD",
-                origem == null ? "front-end" : origem, mensagem);
-
-        return new UploadResponse(recebidos, inseridos, atualizados,
-                consultoresCriados, evento.getId(), mensagem);
+        UploadLote atualizado = buscar(loteId);
+        telemetria.registrar("UPLOAD", origem(usuario), "Lote " + loteId + ": " + atualizado.getMensagem());
+        return LoteDTO.de(atualizado);
     }
 
-    /** CNPJ e a chave boa; sem ele, cai para o nome (e o que a planilha garante). */
-    private Optional<Cliente> localizar(String cnpj, String nome) {
-        if (cnpj != null) {
-            Optional<Cliente> porCnpj = clienteRepository.findFirstByCnpj(cnpj);
-            if (porCnpj.isPresent()) {
-                return porCnpj;
-            }
+    @Transactional(readOnly = true)
+    public List<LoteDTO> historico() {
+        return loteRepository.findTop20ByOrderByIdDesc().stream().map(LoteDTO::de).toList();
+    }
+
+    /**
+     * Fecha o lote como ERRO (se o Python ja nao tiver fechado) e devolve o erro
+     * para o front. Excecao: se o Python ainda estiver processando (o timeout
+     * estourou antes dele terminar), o lote volta como esta e a tela mostra
+     * "processando".
+     */
+    private LoteDTO falhar(Long loteId, HttpStatus status, String motivo) {
+        UploadLote lote = buscar(loteId);
+
+        if (UploadLote.PROCESSADO.equals(lote.getStatus()) || UploadLote.PROCESSANDO.equals(lote.getStatus())) {
+            return LoteDTO.de(lote);
         }
 
-        return clienteRepository.findFirstByNomeIgnoreCase(nome);
+        if (!UploadLote.ERRO.equals(lote.getStatus())) {
+            lote.setStatus(UploadLote.ERRO);
+            lote.setMensagem(motivo);
+            loteRepository.save(lote);
+        }
+
+        telemetria.registrar("UPLOAD_ERRO", origem(lote.getEnviadoPor()), "Lote " + loteId + ": " + lote.getMensagem());
+        throw new ResponseStatusException(status, lote.getMensagem());
     }
 
-    /** Fica com o valor novo quando ele veio; senao mantem o que esta no banco. */
-    private String ouAtual(String novo, String atual) {
-        return novo != null ? novo : atual;
+    private UploadLote buscar(Long loteId) {
+        return loteRepository.findById(loteId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Lote " + loteId + " nao encontrado."));
     }
 
-    private String limpar(String texto) {
-        if (texto == null) return null;
-        String limpo = texto.trim().replaceAll("\\s{2,}", " ");
-        return limpo.isEmpty() ? null : limpo;
+    /**
+     * ClienteDTO (camelCase do Java) -> linha no formato da planilha, que e o
+     * que o limpeza.py le: codigo_cliente, nome_cliente, nivel_cliente...
+     */
+    private List<Map<String, Object>> paraLinhasDoEtl(List<ClienteDTO> clientes) {
+        List<Map<String, Object>> linhas = new ArrayList<>(clientes.size());
+
+        for (ClienteDTO c : clientes) {
+            Map<String, Object> linha = new LinkedHashMap<>();   // aceita null (Map.of nao)
+            linha.put("codigo_cliente", c.codigoCliente());
+            linha.put("nome_cliente", c.nomeCliente());
+            linha.put("consultor", c.consultor());
+            linha.put("segmento", c.segmento());
+            linha.put("nivel_cliente", c.nivelCliente());
+            linha.put("faturamento_anual", c.faturamentoAnual());
+            linha.put("servicos_contratados", c.servicosContratados());
+            linha.put("data_contratacao", c.dataContratacao() == null ? null : c.dataContratacao().toString());
+            linha.put("cidade", c.cidade());
+            linha.put("uf", c.uf());
+            linhas.add(linha);
+        }
+
+        return linhas;
     }
 
-    private String minusculo(String texto) {
-        String limpo = limpar(texto);
-        return limpo == null ? null : limpo.toLowerCase();
-    }
-
-    private String maiusculo(String texto) {
-        String limpo = limpar(texto);
-        return limpo == null ? null : limpo.toUpperCase();
-    }
-
-    /** Guarda o CNPJ so com digitos: "12.345.678/0001-99" e o mesmo cliente que "12345678000199". */
-    private String somenteDigitos(String texto) {
-        String limpo = limpar(texto);
-        if (limpo == null) return null;
-        String digitos = limpo.replaceAll("\\D", "");
-        return digitos.isEmpty() ? null : digitos;
+    /** A coluna origem da telemetria aceita 100 caracteres. */
+    private String origem(String usuario) {
+        if (usuario == null || usuario.isBlank()) return "front-end";
+        return usuario.length() <= 100 ? usuario : usuario.substring(0, 100);
     }
 }

@@ -202,6 +202,15 @@ function servidorVazio() {
   }
 }
 
+/* Estado do envio para a base (POST /api/upload -> lote -> ETL em Python). */
+function envioVazio() {
+  return {
+    status: '',          // '' | 'enviando' | 'ok' | 'processando' | 'erro'
+    lote: null,          // o lote que o back devolveu (id, status, mensagem...)
+    mensagem: '',
+  }
+}
+
 /*
   Quais campos do sistema realmente existem no cabeçalho do arquivo.
   Serve para não acusar "e-mail inválido" em 300 linhas de uma planilha que
@@ -231,6 +240,7 @@ export const useUploadStore = defineStore('upload', {
     etapa: '',              // 'lendo' | 'tratando' | 'validando'
     progresso: { atual: 0, total: 0 },   // linhas já processadas / total
     servidor: servidorVazio(),           // resultado do POST /clientes/validar
+    envio: envioVazio(),                 // resultado do POST /upload (gravação na base)
   }),
 
   getters: {
@@ -344,6 +354,7 @@ export const useUploadStore = defineStore('upload', {
       this.errosTruncados = false
       this.progresso = { atual: 0, total: 0 }
       this.servidor = servidorVazio()
+      this.envio = envioVazio()
     },
 
     /*
@@ -782,13 +793,43 @@ export const useUploadStore = defineStore('upload', {
     },
 
     /*
-      Próxima etapa do projeto: gravar no banco pelo Spring Boot.
-      Ainda não há botão chamando esta action porque o endpoint
-      POST /api/planilhas não existe (o back só expõe /api/usuarios).
+      Grava a carteira na base: POST /api/upload.
+
+      Vão só as linhas que o Pinia aprovou, no formato do ClienteDTO. O Spring
+      valida de novo, cria o lote e chama o Python, que limpa, calcula as
+      estatísticas e grava os clientes. A resposta é o lote já com o status
+      final — PROCESSADO quando deu tudo certo.
     */
     async enviarParaBackend() {
-      if (!this.arquivo) return null
-      return api.enviarPlanilha(this.arquivo)
+      const linhas = this.registrosAprovados
+
+      if (!linhas.length) {
+        this.envio = { ...envioVazio(), status: 'erro', mensagem: 'Nenhuma linha aprovada para enviar.' }
+        return null
+      }
+
+      this.envio = { ...envioVazio(), status: 'enviando' }
+
+      try {
+        const lote = await api.enviarCarteira({
+          arquivo: this.nomeArquivo,
+          recebidas: this.totalRegistros,
+          clientes: linhas.map(paraClienteDTO),
+        })
+        this.envio = {
+          status: lote.status === 'PROCESSADO' ? 'ok' : 'processando',
+          lote,
+          mensagem: lote.mensagem || '',
+        }
+        return lote
+      } catch (erro) {
+        this.envio = {
+          ...envioVazio(),
+          status: 'erro',
+          mensagem: mensagemDeErro(erro, 'Não foi possível enviar a planilha.'),
+        }
+        return null
+      }
     },
   },
 })

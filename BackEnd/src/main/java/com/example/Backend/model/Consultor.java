@@ -13,7 +13,7 @@ import java.util.List;
  * Relacionamento do projeto: 1 Consultor -> N Clientes.
  */
 @Entity
-@Table(name = "consultores")
+@Table(name = "consultor")
 public class Consultor {
 
     @Id
@@ -21,8 +21,9 @@ public class Consultor {
     private Long id;
 
     @NotBlank(message = "O nome do consultor e obrigatorio")
-    @Size(max = 150, message = "O nome deve ter no maximo 150 caracteres")
-    @Column(nullable = false, length = 150)
+    // unique: o Python faz INSERT ... ON CONFLICT (nome), que exige esta restricao.
+    @Size(max = 120, message = "O nome deve ter no maximo 120 caracteres")
+    @Column(nullable = false, unique = true, length = 120)
     private String nome;
 
     @Size(max = 30, message = "A matricula deve ter no maximo 30 caracteres")

@@ -4,7 +4,7 @@ import { deveAnimar } from '../services/preferencias.js'
 
 /*
   Conta de zero até o valor final, mantendo prefixo e sufixo.
-  Aceita o texto já formatado que vem do mock: 'R$ 4,82M', '312', '28%'.
+  Aceita o texto já formatado que a tela monta: 'R$ 4,82M', '312', '28%'.
 
     <NumeroAnimado texto="R$ 4,82M" />
 */

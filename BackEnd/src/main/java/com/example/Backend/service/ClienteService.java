@@ -1,40 +1,50 @@
 package com.example.Backend.service;
 
+import com.example.Backend.dto.ClienteResumoDTO;
 import com.example.Backend.model.Cliente;
-import com.example.Backend.model.Consultor;
+import com.example.Backend.model.Contrato;
+import com.example.Backend.model.UploadLote;
 import com.example.Backend.repository.ClienteRepository;
-import com.example.Backend.repository.ConsultorRepository;
 import com.example.Backend.repository.ContratoRepository;
-import com.example.Backend.repository.InsightRepository;
+import com.example.Backend.repository.UploadLoteRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
-/** Regras do CRUD de Cliente. */
+/**
+ * Carteira de clientes. Os clientes sao gravados pelo ETL em Python, um
+ * conjunto por lote; a tela mostra a "base atual", que e o ultimo lote
+ * processado - o mesmo que alimenta o dashboard.
+ */
 @Service
 public class ClienteService {
 
     private final ClienteRepository repository;
-    private final ConsultorRepository consultorRepository;
     private final ContratoRepository contratoRepository;
-    private final InsightRepository insightRepository;
+    private final UploadLoteRepository loteRepository;
 
     public ClienteService(ClienteRepository repository,
-                          ConsultorRepository consultorRepository,
                           ContratoRepository contratoRepository,
-                          InsightRepository insightRepository) {
+                          UploadLoteRepository loteRepository) {
         this.repository = repository;
-        this.consultorRepository = consultorRepository;
         this.contratoRepository = contratoRepository;
-        this.insightRepository = insightRepository;
+        this.loteRepository = loteRepository;
     }
 
+    /** Duas consultas no total (clientes + contratos), e nao uma por cliente. */
     @Transactional(readOnly = true)
-    public List<Cliente> listar() {
-        return repository.findAll();
+    public List<ClienteResumoDTO> listarBaseAtual() {
+        return loteRepository.findFirstByStatusOrderByIdDesc(UploadLote.PROCESSADO)
+                .map(lote -> listarDoLote(lote.getId()))
+                .orElse(List.of());
     }
 
     @Transactional(readOnly = true)
@@ -43,92 +53,45 @@ public class ClienteService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cliente " + id + " nao encontrado(a)."));
     }
 
-    @Transactional
-    public Cliente criar(Cliente novo) {
-        novo.setId(null);                 // id vem do banco, nunca do cliente HTTP
-        normalizar(novo);
-        novo.setConsultor(resolverConsultor(novo.getConsultor()));
-        return repository.save(novo);
-    }
-
-    @Transactional
-    public Cliente atualizar(Long id, Cliente dados) {
-        Cliente atual = buscar(id);
-        normalizar(dados);
-
-        atual.setNome(dados.getNome());
-        atual.setEmail(dados.getEmail());
-        atual.setSegmento(dados.getSegmento());
-        atual.setCidade(dados.getCidade());
-        atual.setCnpj(dados.getCnpj());
-        atual.setNivel(dados.getNivel());
-        atual.setFaturamento(dados.getFaturamento());
-        atual.setConsultor(resolverConsultor(dados.getConsultor()));
-
-        return repository.save(atual);
-    }
-
+    /** Os contratos e insights do cliente saem junto (ON DELETE CASCADE no banco). */
     @Transactional
     public void excluir(Long id) {
-        Cliente atual = buscar(id);
-
-        if (contratoRepository.existsByClienteId(id)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "O cliente tem contratos vinculados. Exclua os contratos antes.");
-        }
-        if (insightRepository.existsByClienteId(id)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "O cliente tem insights vinculados. Exclua os insights antes.");
-        }
-
-        repository.delete(atual);
+        repository.delete(buscar(id));
     }
 
-    /**
-     * O front envia o relacionamento como consultor: { id: 3 }.
-     * Aqui a referencia e trocada pela entidade real do banco — sem isso o JPA
-     * tentaria gravar um consultor solto, e um id invalido passaria batido.
-     */
-    private Consultor resolverConsultor(Consultor referencia) {
-        if (referencia == null || referencia.getId() == null) {
-            return null;                  // cliente sem consultor e permitido
-        }
+    private List<ClienteResumoDTO> listarDoLote(Long loteId) {
+        Map<Long, List<Contrato>> contratosPorCliente = contratoRepository.findDoLote(loteId).stream()
+                .collect(Collectors.groupingBy(ct -> ct.getCliente().getId()));
 
-        return consultorRepository.findById(referencia.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Consultor " + referencia.getId() + " nao existe."));
-    }
+        return repository.findDoLote(loteId).stream()
+                .map(cliente -> {
+                    List<Contrato> contratos = contratosPorCliente.getOrDefault(cliente.getId(), List.of());
 
-    /**
-     * Padroniza os campos antes de gravar. Precisa usar as MESMAS regras do
-     * UploadService: se o CRUD gravasse "12.345.678/0001-99" e o upload
-     * "12345678000199", o mesmo cliente entraria duas vezes no banco.
-     */
-    private void normalizar(Cliente cliente) {
-        cliente.setNome(limpar(cliente.getNome()));
-        cliente.setSegmento(limpar(cliente.getSegmento()));
-        cliente.setCidade(limpar(cliente.getCidade()));
+                    List<String> servicos = contratos.stream()
+                            .map(ct -> ct.getServico().getNome())
+                            .distinct()
+                            .sorted()
+                            .toList();
 
-        String email = limpar(cliente.getEmail());
-        cliente.setEmail(email == null ? null : email.toLowerCase());
+                    LocalDate contratacao = contratos.stream()
+                            .map(Contrato::getDataContratacao)
+                            .filter(Objects::nonNull)
+                            .min(Comparator.naturalOrder())
+                            .orElse(null);
 
-        cliente.setCnpj(somenteDigitos(cliente.getCnpj()));
-
-        String nivel = limpar(cliente.getNivel());
-        cliente.setNivel(nivel == null ? null : nivel.toUpperCase());
-    }
-
-    private String limpar(String texto) {
-        if (texto == null) return null;
-        String limpo = texto.trim().replaceAll("\\s{2,}", " ");
-        return limpo.isEmpty() ? null : limpo;
-    }
-
-    /** CNPJ guardado so com digitos, igual ao UploadService. */
-    private String somenteDigitos(String texto) {
-        String limpo = limpar(texto);
-        if (limpo == null) return null;
-        String digitos = limpo.replaceAll("\\D", "");
-        return digitos.isEmpty() ? null : digitos;
+                    return new ClienteResumoDTO(
+                            cliente.getId(),
+                            cliente.getCodigoCti(),
+                            cliente.getNome(),
+                            cliente.getConsultor() == null ? null : cliente.getConsultor().getNome(),
+                            cliente.getSegmento(),
+                            cliente.getNivel(),
+                            cliente.getFaturamentoAnual(),
+                            cliente.getCidade(),
+                            cliente.getUf(),
+                            servicos,
+                            contratacao);
+                })
+                .toList();
     }
 }

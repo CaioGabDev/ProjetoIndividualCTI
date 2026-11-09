@@ -70,7 +70,7 @@ export function mensagemDeErro(erro, padrao = 'Não foi possível concluir. Tent
     return padrao
   }
   /* Sem response = o pedido nem chegou: back desligado, URL errada ou CORS. */
-  return 'Não foi possível falar com o servidor. Ele está rodando em http://localhost:8080?'
+  return `Não foi possível falar com o servidor (${http.defaults.baseURL}). Confira se a API está no ar.`
 }
 
 export const api = {
@@ -85,24 +85,21 @@ export const api = {
   atualizarUsuario: (id, dto) => http.put(`/usuarios/${id}`, dto).then(r => r.data),
   removerUsuario: (id) => http.delete(`/usuarios/${id}`).then(() => null),
 
-  // --- Clientes / carteira ---
+  // --- Clientes / carteira (ClienteController) ---
+  // A base atual: clientes do último lote que o Python processou.
   listarClientes: () => http.get('/clientes').then(r => r.data),
-  criarCliente: (dto) => http.post('/clientes', dto).then(r => r.data),
   removerCliente: (id) => http.delete(`/clientes/${id}`).then(() => null),
   // Segunda validação da planilha (ClienteValidacaoController): não grava nada,
   // devolve a mesma lista padronizada ou 400 com { mensagem, erros: [{ indice, campo, erro }] }.
   validarClientes: (clientes) => http.post('/clientes/validar', clientes).then(r => r.data),
 
-  // --- Indicadores do dashboard (ainda a implementar no back) ---
-  buscarIndicadores: () => http.get('/dashboard').then(r => r.data),
+  // --- Dashboard (DashboardController) ---
+  // { lote, resultado } — resultado é o JSON de estatísticas que o Python gravou.
+  painel: () => http.get('/dashboard').then(r => r.data),
 
-  // --- Envio de planilha ---
-  // multipart: o Content-Type (com o boundary) quem monta é o navegador,
-  // por isso ele é anulado aqui em vez de usar o application/json padrão.
-  enviarPlanilha(arquivo) {
-    const form = new FormData()
-    form.append('arquivo', arquivo)
-    return http.post('/planilhas', form, { headers: { 'Content-Type': undefined } }).then(r => r.data)
-  },
-  listarEnvios: () => http.get('/planilhas').then(r => r.data),
+  // --- Envio de planilha (UploadController) ---
+  // { arquivo, recebidas, clientes: [ClienteDTO] } -> o Java cria o lote e chama o Python.
+  // Sem timeout no Axios: no plano grátis da Azure o Python pode demorar para acordar.
+  enviarCarteira: (dto) => http.post('/upload', dto).then(r => r.data),
+  listarLotes: () => http.get('/upload').then(r => r.data),
 }

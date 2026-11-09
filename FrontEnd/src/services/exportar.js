@@ -35,15 +35,18 @@ function baixarPlanilha(linhas, { prefixo, aba, larguras }) {
 /* Carteira de clientes — usada na tela Clientes (respeita o filtro da tela). */
 export function exportarClientes(clientes, { prefixo = 'carteira-ancora' } = {}) {
   const linhas = clientes.map(cliente => ({
+    'Código': cliente.codigo,
     'Cliente': cliente.nome,
-    'CNPJ': cliente.cnpj,
+    'Consultor': cliente.consultor,
     'Segmento': cliente.segmento,
     'Nível': cliente.nivel,
-    'Serviço principal': cliente.servico,
+    'Serviços': cliente.servico,
     'Faturamento (R$)': cliente.faturamento,
+    'Cidade': cliente.cidade,
+    'UF': cliente.uf,
   }))
 
-  baixarPlanilha(linhas, { prefixo, aba: 'Carteira', larguras: [34, 22, 16, 8, 28, 18] })
+  baixarPlanilha(linhas, { prefixo, aba: 'Carteira', larguras: [10, 34, 20, 14, 7, 34, 18, 18, 5] })
 }
 
 /* Resultado do tratamento — usada na tela de envio, depois de ler o arquivo. */

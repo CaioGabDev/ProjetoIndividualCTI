@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Variaveis de ambiente (a Vercel usa as do painel dela)
+.env
+.env.*
+!.env.example

@@ -46,6 +46,9 @@ public class SecurityConfig {
                         // criar a primeira conta nem fazer o primeiro login.
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
 
+                        // Conferencia do deploy: precisa responder sem login.
+                        .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+
                         // Excluir conta e acao de administrador.
                         .requestMatchers(HttpMethod.DELETE, "/api/usuarios/**").hasRole("ADMIN")
 

@@ -3,6 +3,8 @@ package com.example.Backend.model;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.LocalDateTime;
 
@@ -32,10 +34,12 @@ public class Insight {
 
     @ManyToOne
     @JoinColumn(name = "cliente_id")
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Cliente cliente;
 
     @ManyToOne
     @JoinColumn(name = "contrato_id")
+    @OnDelete(action = OnDeleteAction.CASCADE)
     private Contrato contrato;
 
     public Insight() {

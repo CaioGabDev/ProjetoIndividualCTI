@@ -2,7 +2,8 @@
 import { onMounted, ref } from 'vue'
 import AppIcon from '../components/AppIcon.vue'
 import Esqueleto from '../components/Esqueleto.vue'
-import { carregarEnvios, estiloStatus, estiloNivel, formatarReal } from '../data/mock.js'
+import { api, mensagemDeErro } from '../services/api.js'
+import { estiloStatus, estiloNivel, formatarReal, loteParaHistorico } from '../services/formatar.js'
 import { useUploadStore } from '../stores/uploadStore.js'
 import { exportarDadosTratados } from '../services/exportar.js'
 
@@ -12,14 +13,23 @@ import { exportarDadosTratados } from '../services/exportar.js'
 */
 const upload = useUploadStore()
 
-/* O histórico vem do servidor; o resto da tela (dropzone, checklist) é estático. */
+/* O histórico vem do servidor (GET /api/upload); o resto da tela é estático. */
 const historico = ref([])
 const carregandoHistorico = ref(true)
+const erroHistorico = ref('')
 
-onMounted(async () => {
-  historico.value = await carregarEnvios()
-  carregandoHistorico.value = false
-})
+async function carregarHistorico() {
+  erroHistorico.value = ''
+  try {
+    historico.value = (await api.listarLotes()).map(loteParaHistorico)
+  } catch (e) {
+    erroHistorico.value = mensagemDeErro(e, 'Não foi possível carregar o histórico.')
+  } finally {
+    carregandoHistorico.value = false
+  }
+}
+
+onMounted(carregarHistorico)
 const arrastando = ref(false)
 const inputArquivo = ref(null)
 
@@ -61,23 +71,18 @@ function remover() {
 }
 
 /*
-  Lê a planilha no navegador e registra o resultado no histórico.
-  O envio ao Spring Boot entra depois, em upload.enviarParaBackend().
+  Lê a planilha no navegador: padroniza, valida e monta a prévia.
+  Nada vai para a base aqui — isso é o botão "Enviar para a base".
 */
 async function processar() {
-  const nomeArquivo = upload.arquivo?.name
-  const tamanho = upload.arquivo?.size
+  await upload.processarPlanilha()
+}
 
-  const deuCerto = await upload.processarPlanilha()
-  if (!deuCerto) return
-
-  historico.value.unshift({
-    id: Date.now(),
-    arquivo: nomeArquivo,
-    detalhe: `${upload.totalRegistros} linhas · ${upload.registrosValidos} válidas · ${formatarTamanho(tamanho)}`,
-    quando: 'agora',
-    status: upload.totalErros > 0 ? 'Erro de formato' : 'Processado',
-  })
+/* POST /api/upload: Spring cria o lote, o Python processa e grava. */
+async function enviarParaBase() {
+  await upload.enviarParaBackend()
+  /* Deu certo ou errado, o lote entrou no histórico do servidor. */
+  await carregarHistorico()
 }
 </script>
 
@@ -283,6 +288,55 @@ async function processar() {
           </div>
         </div>
 
+        <!-- ============ ENVIO PARA A BASE (Spring -> Python -> banco) ============ -->
+        <div v-if="upload.temRelatorio" class="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-5 animate-surgir">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 class="text-sm font-medium text-zinc-100">Enviar para a base</h2>
+              <p class="mt-0.5 text-[11px] text-zinc-400">
+                Grava as {{ upload.registrosAprovados.length }} linhas aprovadas. O servidor gera as
+                estatísticas e o dashboard passa a mostrar esta planilha.
+              </p>
+            </div>
+
+            <button
+              :disabled="upload.envio.status === 'enviando' || !upload.registrosAprovados.length"
+              class="flex items-center gap-2 rounded-lg bg-emerald-500 px-3.5 py-2 text-xs font-medium text-emerald-950 transition-colors hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="enviarParaBase">
+              <AppIcon name="upload" class="h-3.5 w-3.5" />
+              {{ upload.envio.status === 'enviando' ? 'Enviando e processando...' : 'Enviar para a base' }}
+            </button>
+          </div>
+
+          <p v-if="upload.envio.status === 'enviando'" class="mt-3 text-[11px] text-zinc-400">
+            Na primeira chamada do dia o servidor pode levar até um minuto para acordar.
+          </p>
+
+          <div v-else-if="upload.envio.status === 'ok'" class="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p class="flex items-center gap-2 text-[11px] text-emerald-400">
+              <AppIcon name="check" class="h-3.5 w-3.5 shrink-0" />
+              Enviado! Lote #{{ upload.envio.lote.id }} com {{ upload.envio.lote.linhasValidas }} linhas válidas.
+              {{ upload.envio.mensagem }}
+            </p>
+            <router-link
+              :to="{ name: 'Dashboard' }"
+              class="flex items-center gap-1.5 text-[11px] text-emerald-400 transition-colors hover:text-emerald-300">
+              Ver no dashboard
+              <AppIcon name="chevronRight" class="h-3 w-3" />
+            </router-link>
+          </div>
+
+          <p v-else-if="upload.envio.status === 'processando'" class="mt-4 flex items-center gap-2 text-[11px] text-amber-400">
+            <AppIcon name="clock" class="h-3.5 w-3.5 shrink-0" />
+            Lote #{{ upload.envio.lote.id }} recebido e ainda em processamento. Confira o histórico em instantes.
+          </p>
+
+          <p v-else-if="upload.envio.status === 'erro'" class="mt-4 flex items-center gap-2 text-[11px] text-red-400">
+            <AppIcon name="alert" class="h-3.5 w-3.5 shrink-0" />
+            {{ upload.envio.mensagem }}
+          </p>
+        </div>
+
         <!-- ============ PRÉVIA DOS DADOS TRATADOS ============ -->
         <div v-if="upload.temDados" class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5 animate-surgir">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -379,6 +433,12 @@ async function processar() {
         <div class="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
           <h2 class="text-sm font-medium text-zinc-100">Histórico de envios</h2>
 
+          <p v-if="erroHistorico" class="mt-4 text-[11px] text-red-400">{{ erroHistorico }}</p>
+
+          <p v-else-if="!carregandoHistorico && !historico.length" class="mt-4 text-[11px] text-zinc-500">
+            Nenhuma planilha enviada ainda.
+          </p>
+
           <ul v-if="carregandoHistorico" class="mt-4 space-y-2.5">
             <li
               v-for="n in 3"
@@ -393,7 +453,7 @@ async function processar() {
             </li>
           </ul>
 
-          <ul v-else class="mt-4 space-y-2.5">
+          <ul v-else-if="historico.length" class="mt-4 space-y-2.5">
             <li
               v-for="item in historico"
               :key="item.id"
