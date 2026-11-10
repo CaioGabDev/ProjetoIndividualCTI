@@ -202,6 +202,28 @@ function servidorVazio() {
   }
 }
 
+/*
+  Abre o arquivo como pasta de trabalho do SheetJS.
+
+  .xlsx/.xls guardam o texto já em Unicode, então vão direto. O .csv não diz
+  em que codificação está: entregue como bytes, o SheetJS lê como Latin-1 e
+  "Comércio" vira "ComÃ©rcio" — e aí o segmento deixa de ser reconhecido.
+  Por isso o CSV é decodificado aqui: primeiro como UTF-8 (o padrão de hoje);
+  se não for UTF-8 válido, como Windows-1252 (o "CSV" do Excel antigo).
+*/
+async function lerPlanilha(arquivo) {
+  const buffer = await arquivo.arrayBuffer()
+  if (!arquivo.name.toLowerCase().endsWith('.csv')) return XLSX.read(buffer)
+
+  let texto
+  try {
+    texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+  } catch {
+    texto = new TextDecoder('windows-1252').decode(buffer)
+  }
+  return XLSX.read(texto.replace(/^﻿/, ''), { type: 'string' })
+}
+
 /* Estado do envio para a base (POST /api/upload -> lote -> ETL em Python). */
 function envioVazio() {
   return {
@@ -407,8 +429,7 @@ export const useUploadStore = defineStore('upload', {
       this.tamanhoArquivo = this.arquivo.size
 
       try {
-        const buffer = await this.arquivo.arrayBuffer()
-        const workbook = XLSX.read(buffer)
+        const workbook = await lerPlanilha(this.arquivo)
         const primeiraAba = workbook.SheetNames[0]
 
         if (!primeiraAba) {
