@@ -18,6 +18,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Fluxo do POST /api/upload:
@@ -72,9 +74,11 @@ public class UploadService {
                 return falhar(loteId, HttpStatus.BAD_GATEWAY,
                         "O Python recusou a chave do ETL: o ETL_KEY do Java precisa ser igual ao ETL_API_KEY do Python.");
             }
-            // O Python rodou, mas nao conseguiu tratar os dados: o motivo ja esta gravado no lote.
+            // Quando o Python trata o erro, o motivo ja fica gravado no lote; senao,
+            // usamos o "detail" que ele devolveu para a tela dizer o que houve.
             return falhar(loteId, HttpStatus.UNPROCESSABLE_CONTENT,
-                    "O Python nao conseguiu processar a planilha.");
+                    "O Python nao conseguiu processar a planilha (HTTP " + e.getStatusCode().value()
+                            + detalheDoPython(e.getResponseBodyAsString()) + ").");
         } catch (ResourceAccessException e) {
             log.warn("Sem resposta do ETL em {} para o lote {}: {}", etl.getUrl(), loteId, e.getMessage());
             return falhar(loteId, HttpStatus.SERVICE_UNAVAILABLE,
@@ -142,6 +146,15 @@ public class UploadService {
         }
 
         return linhas;
+    }
+
+    /** Pega o campo "detail" da resposta de erro do FastAPI: {"detail": "..."}. */
+    private String detalheDoPython(String corpo) {
+        if (corpo == null || corpo.isBlank()) return "";
+        Matcher m = Pattern.compile("\"detail\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").matcher(corpo);
+        String detalhe = m.find() ? m.group(1) : corpo.strip();
+        if (detalhe.length() > 200) detalhe = detalhe.substring(0, 200);
+        return ": " + detalhe;
     }
 
     /** A coluna origem da telemetria aceita 100 caracteres. */

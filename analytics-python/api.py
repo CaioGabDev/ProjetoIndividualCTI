@@ -9,6 +9,7 @@
 
 # Carregamento das bibliotecas
 import os                                           # lê a variável ETL_API_KEY
+import traceback                                    # mostra o erro completo no log
 
 from fastapi import FastAPI, Header, HTTPException  # cria a API e devolve erros HTTP
 from pydantic import BaseModel                      # descreve o formato do JSON que chega
@@ -50,9 +51,15 @@ def etl(pedido: Pedido, x_etl_key: str | None = Header(default=None)):
         raise HTTPException(status_code=401, detail="Chave do ETL inválida.")
     if len(pedido.linhas) == 0:
         raise HTTPException(status_code=422, detail="Nenhuma linha válida foi enviada.")
-    ok = processar_lote(pegar_conexao(), pedido.loteId, pedido.linhas, pedido.recebidas)
+    try:
+        ok = processar_lote(pegar_conexao(), pedido.loteId, pedido.linhas, pedido.recebidas)
+    except Exception as erro:                       # ex.: não conectou no banco
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail="Erro no ETL: " + str(erro).splitlines()[0][0:300])
     if not ok:
-        raise HTTPException(status_code=500, detail="Falha no ETL (veja o terminal do Python).")
+        raise HTTPException(status_code=500,
+                            detail="Lote " + str(pedido.loteId) + " não encontrado ou já processado "
+                                   "(o Python e o Java estão no mesmo banco?).")
     return {"ok": True, "loteId": pedido.loteId}
 
 
